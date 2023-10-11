@@ -1,0 +1,61 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.ndimage import gaussian_filter
+
+img_dim = 64
+
+
+'''creates values of coords up to image size, then makes grid of coords'''
+x = np.linspace(0,img_dim-1,img_dim)
+y = np.linspace(0,img_dim-1,img_dim)
+# x=np.zeros(img_dim)
+# y=np.zeros(img_dim)
+xx, yy = np.meshgrid(x, y)#, sparse=True)
+
+'''the constants for shape creation'''
+x_c, y_c = (img_dim/2 + np.random.uniform(-img_dim/4, img_dim/4)), (img_dim/2 + np.random.uniform(-img_dim/4, img_dim/4))
+r = img_dim/16 * 4
+angle = np.random.uniform(0, np.pi*2)
+
+
+def inside_circle(xs, ys, xc, yc, r):
+    '''takes consts and defines region where inside circle, sets the grid values to 1, else 0'''
+    cir = (xs-xc)**2+(ys-yc)**2
+    im_c = np.where(cir<r**2, 1, 0)
+    return np.add(im_c, np.random.random([img_dim,img_dim])/5)
+
+def inside_square(xs, ys, xc, yc, l, a):
+    '''takes consts and defines region where inside square, sets the grid values to 1, else 0'''
+    nx = np.sin(a)
+    ny = np.cos(a) #normal vectors to edge, to determine if coord is inside or outside edge
+    im_sq = np.where((np.absolute((xx-xc)*nx+(yy-yc)*ny)<l/2) & (np.absolute((xx-xc)*ny-(yy-yc)*nx)<l/2), 1, 0)
+    #second condition uses tangent vectors to edge to find other two edges
+    #absolute allows both edges to be considered at once
+    return np.add(im_sq, np.random.random([img_dim,img_dim])/5)
+
+def inside_triangle(xx, yy, xc, yc, l, a):
+    '''takes consts and defines region where inside triangle, sets the grid values to 1, else 0'''
+    nx1 = np.sin(a)
+    ny1 = np.cos(a) #normal vectors to edge, to determine if coord is inside or outside edge
+    nx2 = np.sin(a+ 2*np.pi/3) #norm vectors rotated 120deg for other edges
+    ny2 = np.cos(a+ 2*np.pi/3)
+    nx3 = np.sin(a- 2*np.pi/3)
+    ny3 = np.cos(a- 2*np.pi/3)
+    im_tr = np.where(((xx-xc)*nx1+(yy-yc)*ny1<l/2) & ((xx-xc)*nx2+(yy-yc)*ny2<l/2)
+                     & ((xx-xc)*nx3+(yy-yc)*ny3<l/2), 1, 0)
+    
+    return np.add(im_tr, np.random.random([img_dim,img_dim])/5)
+
+'''these display graphs of the random shapes, first is shape and second is smoothed shape using gaussian filter
+the cmap makes it greyscale'''
+
+# plt.imshow((inside_square(xx,yy,x_c,y_c,r,angle)), cmap='gray')
+plt.imshow(gaussian_filter(inside_square(xx,yy,x_c,y_c,r,angle), sigma=0.1), cmap='gray')
+
+
+# plt.imshow((inside_circle(xx, yy, x_c, y_c, r)), cmap='gray')
+# plt.imshow(gaussian_filter(inside_circle(xx, yy, x_c, y_c, r), sigma=0.1), cmap='gray')
+
+# plt.imshow((inside_triangle(xx, yy, x_c, y_c, r,angle)), cmap='gray')
+# plt.imshow(gaussian_filter(inside_triangle(xx, yy, x_c, y_c, r,angle), sigma=0.1), cmap='gray')
+plt.show()
