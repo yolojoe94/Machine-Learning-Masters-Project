@@ -1,0 +1,41 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy as sp
+
+def generate_array(x_size, y_size):
+    image = np.ones((x_size, y_size))
+    x, y = np.meshgrid(np.arange(x_size), np.arange(y_size))
+    return x, y, image
+
+def generate_circle(x0, y0, r, x_size = 128, y_size = 128):
+    x, y, image = generate_array(x_size, y_size)
+    mask = (x-x0)**2 + (y-y0)**2 >= r**2
+    image[mask] = 0
+    return image
+
+def delete_side(x, y, image, x0, y0, b, theta):
+    mask = (x-x0)*np.cos(theta*np.pi/180) + (y-y0)*np.sin(theta*np.pi/180) >= b
+    image[mask] = 0
+    return x, y, image
+
+
+def generate_shape(sides, x0, y0, a, theta, x_size = 128, y_size = 128):
+    x, y, image = generate_array(x_size, y_size)
+    i_angle = 180*(sides-2)/sides
+    b = a*np.tan(i_angle*np.pi/360)/2
+    e_angle = 360/sides
+    for i in range(sides):
+        x, y, image = delete_side(x, y, image, x0, y0, b, theta)
+        theta += e_angle
+        i+=1
+    return image
+
+def plot_shape(resolution):
+    sides = np.random.randint(3, 8)
+    x0 = np.random.randint(resolution/4, 3*resolution/4)
+    y0 = np.random.randint(resolution/4, 3*resolution/4)
+    a = np.random.randint(resolution/10, resolution/2 * (-0.2*sides + 1.2))
+    theta = np.random.randint(0, 360)
+    image = generate_shape(sides, x0, y0, a, theta)
+    plt.imshow(image)
+plot_shape(64)
