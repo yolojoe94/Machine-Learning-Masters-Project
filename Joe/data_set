@@ -1,0 +1,23 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from shape_generator import grid, inside_circle, inside_square, inside_triangle
+
+'''create array of random arrays of [xc, yc, radius, angle, shape(0,1,2)]
+for each set, make a shape array grid
+create array of grids and labels
+'''
+img_dim = 64
+num = 10# number of shapes
+starts = np.random.rand(num, 5)
+
+starto = np.zeros((num,5))
+xs = (np.random.rand(num)-0.5)*2*img_dim/4 + img_dim/2
+ys = (np.random.rand(num)-0.5)*2*img_dim/4 + img_dim/2
+r = (np.random.rand(num)+1)*img_dim/8
+
+starto[np.arange(num), np.zeros(num,int)] = xs
+starto[np.arange(num), np.zeros(num,int)+1] = ys
+starto[np.arange(num), np.zeros(num,int)+2] = r
+
+
+print(starto)
