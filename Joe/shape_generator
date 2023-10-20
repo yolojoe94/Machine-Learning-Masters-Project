@@ -2,15 +2,24 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
 
-img_dim = 64
+img_dim = 4
 
 
-'''creates values of coords up to image size, then makes grid of coords'''
-x = np.linspace(0,img_dim-1,img_dim)
-y = np.linspace(0,img_dim-1,img_dim)
-# x=np.zeros(img_dim)
-# y=np.zeros(img_dim)
-xx, yy = np.meshgrid(x, y)#, sparse=True)
+# '''creates values of coords up to image size, then makes grid of coords'''
+# x = np.linspace(0,img_dim-1,img_dim)
+# y = np.linspace(0,img_dim-1,img_dim)
+# # x=np.zeros(img_dim)
+# # y=np.zeros(img_dim)
+# xx, yy = np.meshgrid(x, y)#, sparse=True)
+
+def grid(size):
+    '''creates values of coords up to image size, then makes grid of coords.
+    does this _number_ of times to make 3d grid of unrelated slices'''
+    xx, yy = np.meshgrid(np.linspace(0,size-1,size),
+                            np.linspace(0,size-1,size), sparse=True)
+    return xx, yy
+
+a = grid(img_dim) #for use in image generation in this file
 
 '''the constants for shape creation'''
 x_c, y_c = (img_dim/2 + np.random.uniform(-img_dim/4, img_dim/4)), (img_dim/2 + np.random.uniform(-img_dim/4, img_dim/4))
@@ -18,7 +27,7 @@ r = img_dim/16 * 4
 angle = np.random.uniform(0, np.pi*2)
 
 
-def inside_circle(xs, ys, xc, yc, r):
+def inside_circle(xs, ys, xc, yc, r, a=0):
     '''takes consts and defines region where inside circle, sets the grid values to 1, else 0'''
     cir = (xs-xc)**2+(ys-yc)**2
     im_c = np.where(cir<r**2, 1, 0)
@@ -26,14 +35,16 @@ def inside_circle(xs, ys, xc, yc, r):
 
 def inside_square(xs, ys, xc, yc, l, a):
     '''takes consts and defines region where inside square, sets the grid values to 1, else 0'''
+    #l is the max square radius
     nx = np.sin(a)
     ny = np.cos(a) #normal vectors to edge, to determine if coord is inside or outside edge
-    im_sq = np.where((np.absolute((xx-xc)*nx+(yy-yc)*ny)<l/2) & (np.absolute((xx-xc)*ny-(yy-yc)*nx)<l/2), 1, 0)
+    im_sq = np.where((np.absolute((xs-xc)*nx+(ys-yc)*ny)<l/np.sqrt(2)) & (np.absolute((xs-xc)*ny-(ys-yc)*nx)<l/np.sqrt(2)), 1, 0)
     #second condition uses tangent vectors to edge to find other two edges
     #absolute allows both edges to be considered at once
+    #l//np.sqrt(2) is the hald side length
     return np.add(im_sq, np.random.random([img_dim,img_dim])/5)
 
-def inside_triangle(xx, yy, xc, yc, l, a):
+def inside_triangle(xs, ys, xc, yc, l, a):
     '''takes consts and defines region where inside triangle, sets the grid values to 1, else 0'''
     nx1 = np.sin(a)
     ny1 = np.cos(a) #normal vectors to edge, to determine if coord is inside or outside edge
@@ -41,21 +52,21 @@ def inside_triangle(xx, yy, xc, yc, l, a):
     ny2 = np.cos(a+ 2*np.pi/3)
     nx3 = np.sin(a- 2*np.pi/3)
     ny3 = np.cos(a- 2*np.pi/3)
-    im_tr = np.where(((xx-xc)*nx1+(yy-yc)*ny1<l/2) & ((xx-xc)*nx2+(yy-yc)*ny2<l/2)
-                     & ((xx-xc)*nx3+(yy-yc)*ny3<l/2), 1, 0)
+    im_tr = np.where(((xs-xc)*nx1+(ys-yc)*ny1<l/2) & ((xs-xc)*nx2+(ys-yc)*ny2<l/2)
+                     & ((xs-xc)*nx3+(ys-yc)*ny3<l/2), 1, 0)
     
     return np.add(im_tr, np.random.random([img_dim,img_dim])/5)
 
 '''these display graphs of the random shapes, first is shape and second is smoothed shape using gaussian filter
 the cmap makes it greyscale'''
 
-# plt.imshow((inside_square(xx,yy,x_c,y_c,r,angle)), cmap='gray')
-plt.imshow(gaussian_filter(inside_square(xx,yy,x_c,y_c,r,angle), sigma=0.1), cmap='gray')
+# plt.imshow((inside_square(a[0],a[1],x_c,y_c,r,angle)), cmap='gray')
+# plt.imshow(gaussian_filter(inside_square(a[0],a[1],x_c,y_c,r,angle), sigma=0.1), cmap='gray')
 
 
-# plt.imshow((inside_circle(xx, yy, x_c, y_c, r)), cmap='gray')
-# plt.imshow(gaussian_filter(inside_circle(xx, yy, x_c, y_c, r), sigma=0.1), cmap='gray')
+# plt.imshow((inside_circle(a[0], a[1], x_c, y_c, r)), cmap='gray')
+plt.imshow(gaussian_filter(inside_circle(a[0], a[1], x_c, y_c, r), sigma=0.1), cmap='gray')
 
-# plt.imshow((inside_triangle(xx, yy, x_c, y_c, r,angle)), cmap='gray')
-# plt.imshow(gaussian_filter(inside_triangle(xx, yy, x_c, y_c, r,angle), sigma=0.1), cmap='gray')
+# plt.imshow((inside_triangle(a[0], a[1], x_c, y_c, r,angle)), cmap='gray')
+# plt.imshow(gaussian_filter(inside_triangle(a[0], a[1], x_c, y_c, r,angle), sigma=0.1), cmap='gray')
 plt.show()
