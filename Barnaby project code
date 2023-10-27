@@ -1,25 +1,74 @@
 import numpy as np
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, Dropout, BatchNormalization
+from tensorflow.keras.utils import to_categorical
 import matplotlib.pyplot as plt
-import scipy as sp
-
 def generate_array(x_size, y_size):
+    """
+    Generates an array filled with ones and returns meshgrid values.
+    
+    Parameters:
+    - x_size: Width of the array.
+    - y_size: Height of the array.
+    
+    Returns:
+    - x, y: Meshgrid arrays.
+    - image: Array filled with ones of shape (x_size, y_size).
+    """
     image = np.ones((x_size, y_size))
     x, y = np.meshgrid(np.arange(x_size), np.arange(y_size))
     return x, y, image
 
 def generate_circle(x0, y0, r, x_size, y_size):
+    """
+    Generates an image with a circle.
+    
+    Parameters:
+    - x0, y0: Center of the circle.
+    - r: Radius of the circle.
+    - x_size, y_size: Dimensions of the output image.
+    
+    Returns:
+    - image: Image of the circle.
+    """
     x, y, image = generate_array(x_size, y_size)
     mask = (x-x0)**2 + (y-y0)**2 >= r**2
     image[mask] = 0
     return image
 
 def delete_side(x, y, image, x0, y0, b, theta):
+    """
+    Deletes/masks one side of a regular polygon from the given image.
+    
+    Parameters:
+    - x, y: Meshgrid arrays.
+    - image: Image to modify.
+    - x0, y0: Reference point.
+    - b: Distance to mask from the reference point.
+    - theta: Angle of the side to delete.
+    
+    Returns:
+    - x, y: Unmodified meshgrid arrays.
+    - image: Modified image.
+    """
     mask = (x-x0)*np.cos(theta*np.pi/180) + (y-y0)*np.sin(theta*np.pi/180) >= b
     image[mask] = 0
     return x, y, image
 
-
 def generate_shape(sides, x0, y0, a, theta, x_size, y_size):
+    """
+    Generates an image of a regular polygon.
+    
+    Parameters:
+    - sides: Number of sides of the polygon.
+    - x0, y0: Center of the polygon.
+    - a: Distance related to the size of the polygon.
+    - theta: Initial angle for polygon generation.
+    - x_size, y_size: Dimensions of the output image.
+    
+    Returns:
+    - image: Image of the regular polygon.
+    """
     x, y, image = generate_array(x_size, y_size)
     i_angle = 180*(sides-2)/sides
     b = a*np.tan(i_angle*np.pi/360)/2
@@ -27,8 +76,105 @@ def generate_shape(sides, x0, y0, a, theta, x_size, y_size):
     for i in range(sides):
         x, y, image = delete_side(x, y, image, x0, y0, b, theta)
         theta += e_angle
-        i+=1
+    image += np.random.randn(*image.shape)*(np.sqrt(image)+0.1)*0.2
+    image = preprocess(image)
     return image
+
+def preprocess(im):
+    x, y = np.meshgrid(np.arange(60), np.arange(60))
+    
+    im_z = np.where(im>0.3, 1.0, 0)
+    dx = np.sum(x*im_z)/np.sum(im_z)-30
+    dy = np.sum(y*im_z)/np.sum(im_z)-30
+    im = np.roll(im, -int(np.round(dy)), axis=0)
+    im = np.roll(im, -int(np.round(dx)), axis=1)
+    return im
+    
+def generate_dataset(size, resolution):
+    """
+    Generates a dataset of labeled polygons.
+    
+    Parameters:
+    - size: Number of images to generate.
+    - resolution: Dimensions of each image (resolution x resolution).
+    
+    Returns:
+    - dataset: List of tuples. Each tuple contains a label (number of sides) and the image array.
+    """
+    dataset = []
+    for i in range(size):
+        sides = np.random.randint(3, 5)
+        x0 = np.random.randint(resolution/4, 3*resolution/4)
+        y0 = np.random.randint(resolution/4, 3*resolution/4)
+        a = np.random.randint(resolution/6, resolution/1.5 * (-0.1*sides + 1))
+        theta = np.random.randint(0, 360)
+        image = generate_shape(sides, x0, y0, a, theta, resolution, resolution)
+        labeled_image = (sides, image)
+        dataset.append(labeled_image)
+    return dataset
+
+
+# 1. Data Preparation
+dataset = generate_dataset(1000, 60)  # Generating a larger dataset for training
+
+# Reshaping images for the model and normalizing
+X = np.array([item[1] for item in dataset]).reshape(-1, 60, 60, 1)
+# X = np.array([np.sum(item[1], axis = 0) for item in dataset]).reshape(-1, 60, 1)
+
+# Converting labels to one-hot encoding. We subtract by 3 because the minimum number of sides is 3.
+Y = to_categorical(np.array([item[0] for item in dataset]) - 3)
+
+# Splitting the dataset into training and validation sets
+train_size = int(0.8 * len(X))
+X_train, X_val = X[:train_size], X[train_size:]
+Y_train, Y_val = Y[:train_size], Y[train_size:]
+
+# 2. Building the Model
+model = Sequential([
+    Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=(60, 60, 1)),
+    MaxPooling2D(pool_size=(2, 2)),
+    Dropout(0.1),
+    Conv2D(64, kernel_size=(3, 3), activation='relu'),
+    MaxPooling2D(pool_size=(2, 2)),
+    Dropout(0.1),
+    Flatten(),
+    Dense(64, activation='relu'),
+    Dropout(0.1),
+    Dense(5, activation='softmax')
+])
+
+
+# Compiling the model
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# 3. Training the Model
+history = model.fit(X_train, Y_train, validation_data=(X_val, Y_val), epochs=20, batch_size=16)
+
+# Optional: Visualize training progress
+plt.plot(history.history['accuracy'], label='accuracy')
+plt.plot(history.history['val_accuracy'], label='val_accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.ylim([0, 1])
+plt.legend(loc='lower right')
+plt.show()
+
+
+'''
+
+def plot_dataset(size = 5, resolution = 60):
+    dataset = generate_dataset(size, resolution)
+
+    fig, axs = plt.subplots(1, size)  # 1 row, 5 columns, figure size is set to 15x3
+
+    for i in range(size):
+        axs[i].imshow(dataset[i][1], cmap='gray', vmax=1.2, vmin=-0.2)  # Using grayscale colormap for clarity
+        axs[i].axis('off')  # To hide axis values
+        axs[i].set_title(f"Sides: {dataset[i][0]}")  # Setting title as the number of sides
+
+    plt.tight_layout()  # Adjust spacing between images
+    plt.show()
+plot_dataset()
 
 def plot_shape(resolution = 128):
     sides = np.random.randint(3, 8)
@@ -38,4 +184,5 @@ def plot_shape(resolution = 128):
     theta = np.random.randint(0, 360)
     image = generate_shape(sides, x0, y0, a, theta, resolution, resolution)
     plt.imshow(image)
-plot_shape(256)
+plot_shape(128)
+'''
