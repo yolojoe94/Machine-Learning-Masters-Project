@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
 
-img_dim = 4
+img_dim = 64
 
 
 # '''creates values of coords up to image size, then makes grid of coords'''
@@ -26,12 +26,27 @@ x_c, y_c = (img_dim/2 + np.random.uniform(-img_dim/4, img_dim/4)), (img_dim/2 + 
 r = img_dim/16 * 4
 angle = np.random.uniform(0, np.pi*2)
 
+def preprocess(x, y, grid, dim):
+    '''recenters image using average mass position'''
+    proc = np.where(grid>0.3, 1, 0)
+    # print(proc, '\n')
+    # plt.matshow(proc)
+    dx = np.sum(x*proc)/np.sum(proc)-dim/2
+    dy = np.sum(y*proc)/np.sum(proc)-dim/2
+    # print(dx,dy)
+    im = np.roll(proc, -int(np.round(dy)), axis=0)
+    im = np.roll(proc, -int(np.round(dx)), axis=1)
+    #this is just not moving the y coord for some reason
+    # print(im)
+    # plt.matshow(im)
+    return im
 
 def inside_circle(xs, ys, xc, yc, r, a=0):
     '''takes consts and defines region where inside circle, sets the grid values to 1, else 0'''
     cir = (xs-xc)**2+(ys-yc)**2
     im_c = np.where(cir<r**2, 1, 0)
-    return np.add(im_c, np.random.random([img_dim,img_dim])/5)
+    im_c = np.add(im_c, np.random.random([img_dim,img_dim])/5) #unprocessed image
+    return preprocess(grid(img_dim)[0], grid(img_dim)[1], im_c, img_dim)
 
 def inside_square(xs, ys, xc, yc, l, a):
     '''takes consts and defines region where inside square, sets the grid values to 1, else 0'''
@@ -42,7 +57,8 @@ def inside_square(xs, ys, xc, yc, l, a):
     #second condition uses tangent vectors to edge to find other two edges
     #absolute allows both edges to be considered at once
     #l//np.sqrt(2) is the hald side length
-    return np.add(im_sq, np.random.random([img_dim,img_dim])/5)
+    im_sq = np.add(im_sq, np.random.random([img_dim,img_dim])/5) #unprocessed image
+    return preprocess(grid(img_dim)[0], grid(img_dim)[1], im_sq, img_dim)
 
 def inside_triangle(xs, ys, xc, yc, l, a):
     '''takes consts and defines region where inside triangle, sets the grid values to 1, else 0'''
@@ -54,19 +70,23 @@ def inside_triangle(xs, ys, xc, yc, l, a):
     ny3 = np.cos(a- 2*np.pi/3)
     im_tr = np.where(((xs-xc)*nx1+(ys-yc)*ny1<l/2) & ((xs-xc)*nx2+(ys-yc)*ny2<l/2)
                      & ((xs-xc)*nx3+(ys-yc)*ny3<l/2), 1, 0)
-    
-    return np.add(im_tr, np.random.random([img_dim,img_dim])/5)
+    im_tr = np.add(im_tr, np.random.random([img_dim,img_dim])/5) #unprocessed image
+    return preprocess(grid(img_dim)[0], grid(img_dim)[1], im_tr, img_dim)
+
+
+
 
 '''these display graphs of the random shapes, first is shape and second is smoothed shape using gaussian filter
 the cmap makes it greyscale'''
 
-# plt.imshow((inside_square(a[0],a[1],x_c,y_c,r,angle)), cmap='gray')
+# plt.imshow(preprocess(a[0], a[1], inside_square(a[0],a[1],x_c,y_c,r,angle), img_dim))
 # plt.imshow(gaussian_filter(inside_square(a[0],a[1],x_c,y_c,r,angle), sigma=0.1), cmap='gray')
 
 
 # plt.imshow((inside_circle(a[0], a[1], x_c, y_c, r)), cmap='gray')
-plt.imshow(gaussian_filter(inside_circle(a[0], a[1], x_c, y_c, r), sigma=0.1), cmap='gray')
+# plt.imshow(gaussian_filter( inside_circle(a[0], a[1], x_c, y_c, r), sigma=0.1), cmap='gray')
 
+# inside_triangle(a[0], a[1], x_c, y_c, r,angle)
 # plt.imshow((inside_triangle(a[0], a[1], x_c, y_c, r,angle)), cmap='gray')
 # plt.imshow(gaussian_filter(inside_triangle(a[0], a[1], x_c, y_c, r,angle), sigma=0.1), cmap='gray')
 plt.show()
