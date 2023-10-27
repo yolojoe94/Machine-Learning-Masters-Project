@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter
 from shape_generator import grid, inside_circle, inside_square, inside_triangle, img_dim
+import matplotlib.pyplot as plt
 
 '''1) create array of random arrays of [xc, yc, radius, angle, shape(0,1,2)]'''#done
 '''2) for each set, make a shape array grid'''#done
@@ -8,52 +9,72 @@ from shape_generator import grid, inside_circle, inside_square, inside_triangle,
 
 
 img_dim1 = img_dim # number pixels
-num = 1000 # number of shapes
+num = 5 # number of shapes
 
-starto = np.zeros((num,5)) #basic empty array of start
+def data(dim, num):
+    starto = np.zeros((num,5)) #basic empty array of start
 
-'''these are randomised start values for the shapes'''
-xcs = ((np.random.rand(num)-0.5)*2*img_dim1/4 + img_dim1/2).round(1)
-ycs = ((np.random.rand(num)-0.5)*2*img_dim1/4 + img_dim1/2).round(1)
-r = ((np.random.rand(num)+1)*img_dim1/8).round(1)
-angle = (np.random.rand(num)*(np.pi*2)).round(2)
-shape = np.random.randint(0,3,num)
+    '''these are randomised start values for the shapes'''
+    xcs = ((np.random.rand(num)-0.5)*2*img_dim1/4 + img_dim1/2).round(1)
+    ycs = ((np.random.rand(num)-0.5)*2*img_dim1/4 + img_dim1/2).round(1)
+    r = ((np.random.rand(num)+1)*img_dim1/8).round(1)
+    angle = (np.random.rand(num)*(np.pi*2)).round(2)
+    shape = np.random.randint(0,3,num)
 
-'''indexes starto to add the start values'''
-starto[np.arange(num), np.zeros(num,int)] = xcs
-starto[np.arange(num), np.zeros(num,int)+1] = ycs
-starto[np.arange(num), np.zeros(num,int)+2] = r
-starto[np.arange(num), np.zeros(num,int)+3] = angle
-starto[np.arange(num), np.zeros(num,int)+4] = shape
+    '''indexes starto to add the start values'''
+    starto[np.arange(num), np.zeros(num,int)] = xcs
+    starto[np.arange(num), np.zeros(num,int)+1] = ycs
+    starto[np.arange(num), np.zeros(num,int)+2] = r
+    starto[np.arange(num), np.zeros(num,int)+3] = angle
+    starto[np.arange(num), np.zeros(num,int)+4] = shape
+    
+    '''orders starto by shape type'''
+    test = np.array(sorted(starto , key=lambda k: [k[-1]]))
+    print(test)
+    
+    
+    s = test#redefine for ease of typing
+    a = grid(img_dim1)#grid for making pixels on
+    
+    
+    grids=[] #this is the list containing all of the grids
+    shapes = [] #list of labels
+    for i in np.arange(num):
+        if s[np.arange(num), np.zeros(num,int)+4][i] == 0:
+            '''if shape value is 0, it is a circle.
+            make a pixel array using the inside_shape functions and the corresponding start values.
+            create an img_dim by img_dim array and add to higher order array with the shape value.
+            make a list of these'''
+            # print('circle')
+            temp = gaussian_filter(inside_circle(a[0], a[1], s[i][0], s[i][1], s[i][2]), sigma=0.1) 
+            temp2 = s[i][4]
+        elif s[np.arange(num), np.zeros(num,int)+4][i] == 1:
+            # print('triangle')
+            temp = gaussian_filter(inside_triangle(a[0], a[1], s[i][0], s[i][1], s[i][2], s[i][3]), sigma=0.1)
+            temp2 = s[i][4]
+        elif s[np.arange(num), np.zeros(num,int)+4][i] == 2:
+            # print('square')
+            temp = gaussian_filter(inside_square(a[0], a[1], s[i][0], s[i][1], s[i][2], s[i][3]), sigma=0.1)
+            temp2 = s[i][4]
+        grids.append(temp)
+        shapes.append(temp2)
+    
+    '''list1 follows list1[which shape][coords or shape value][y value][x value]'''
+    return grids, shapes
+dat = data(img_dim, num)
+def plot_dataset():
+    
 
-'''orders starto by shape type'''
-test = np.array(sorted(starto , key=lambda k: [k[-1]]))
-print(test)
+    fig, axs = plt.subplots(1, num)  # 1 row, 5 columns, figure size is set to 15x3
 
+    for i in range(num):
+        axs[i].imshow(dat[0][i], cmap='gray', vmax=1.2, vmin=-0.2)  # Using grayscale colormap for clarity
+        axs[i].axis('off')  # To hide axis values
+        axs[i].set_title(f"Sides: {dat[1][i]}")  # Setting title as the number of sides
 
-s = test#redefine for ease of typing
-a = grid(img_dim1)#grid for making pixels on
-
-
-list1=[] #this is the list containing pairs of grids and labels
-for i in np.arange(num):
-    if s[np.arange(num), np.zeros(num,int)+4][i] == 0:
-        '''if shape value is 0, it is a circle.
-        make a pixel array using the inside_shape functions and the corresponding start values.
-        create an img_dim by img_dim array and add to higher order array with the shape value.
-        make a list of these'''
-        print('circle')
-        temp = np.array([gaussian_filter(inside_circle(a[0], a[1], s[i][0], s[i][1], s[i][2]), sigma=0.1),s[i][4]])
-    elif s[np.arange(num), np.zeros(num,int)+4][i] == 1:
-        print('triangle')
-        temp = np.array([gaussian_filter(inside_triangle(a[0], a[1], s[i][0], s[i][1], s[i][2], s[i][3]), sigma=0.1),s[i][4]])
-    elif s[np.arange(num), np.zeros(num,int)+4][i] == 2:
-        print('square')
-        temp = np.array([gaussian_filter(inside_square(a[0], a[1], s[i][0], s[i][1], s[i][2], s[i][3]), sigma=0.1),s[i][4]])
-    list1.append(temp)
-
-'''list1 follows list1[which shape][coords or shape value][y value][x value]'''
-
+    plt.tight_layout()  # Adjust spacing between images
+    plt.show()
+plot_dataset()
 
 
 
