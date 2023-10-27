@@ -1,0 +1,51 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Oct 27 17:29:13 2023
+
+@author: JXL1433
+"""
+
+# 1. Data Preparation
+dataset = generate_dataset(1000, 60)  # Generating a larger dataset for training
+
+# Reshaping images for the model and normalizing
+X = np.array([item[1] for item in dataset]).reshape(-1, 60, 60, 1)
+# X = np.array([np.sum(item[1], axis = 0) for item in dataset]).reshape(-1, 60, 1)
+
+# Converting labels to one-hot encoding. We subtract by 3 because the minimum number of sides is 3.
+Y = to_categorical(np.array([item[0] for item in dataset]) - 3)
+
+# Splitting the dataset into training and validation sets
+train_size = int(0.8 * len(X))
+X_train, X_val = X[:train_size], X[train_size:]
+Y_train, Y_val = Y[:train_size], Y[train_size:]
+
+# 2. Building the Model
+model = Sequential([
+    Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=(60, 60, 1)),
+    MaxPooling2D(pool_size=(2, 2)),
+    Dropout(0.1),
+    Conv2D(64, kernel_size=(3, 3), activation='relu'),
+    MaxPooling2D(pool_size=(2, 2)),
+    Dropout(0.1),
+    Flatten(),
+    Dense(64, activation='relu'),
+    Dropout(0.1),
+    Dense(5, activation='softmax')
+])
+
+
+# Compiling the model
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# 3. Training the Model
+history = model.fit(X_train, Y_train, validation_data=(X_val, Y_val), epochs=20, batch_size=16)
+
+# Optional: Visualize training progress
+plt.plot(history.history['accuracy'], label='accuracy')
+plt.plot(history.history['val_accuracy'], label='val_accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.ylim([0, 1])
+plt.legend(loc='lower right')
+plt.show()
