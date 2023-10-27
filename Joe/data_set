@@ -1,15 +1,14 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
-from shape_generator import grid, inside_circle, inside_square, inside_triangle
+from shape_generator import grid, inside_circle, inside_square, inside_triangle, img_dim
 
 '''1) create array of random arrays of [xc, yc, radius, angle, shape(0,1,2)]'''#done
 '''2) for each set, make a shape array grid'''#done
 '''3) create array of grids and labels'''#done
 
 
-img_dim1=4# number pixels
-num = 10# number of shapes
+img_dim1 = img_dim # number pixels
+num = 1000 # number of shapes
 
 starto = np.zeros((num,5)) #basic empty array of start
 
@@ -36,7 +35,7 @@ s = test#redefine for ease of typing
 a = grid(img_dim1)#grid for making pixels on
 
 
-list1=[]
+list1=[] #this is the list containing pairs of grids and labels
 for i in np.arange(num):
     if s[np.arange(num), np.zeros(num,int)+4][i] == 0:
         '''if shape value is 0, it is a circle.
