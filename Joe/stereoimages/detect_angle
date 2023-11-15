@@ -15,7 +15,11 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
     define squares
     construct large array of pairs of squares at random angles
     add noise
-    make training, validation and test data
+    preprocess
+    make training and validation data
+    use multiple inputs and train with labelled pairs'''
+    
+'''later:
     create encoder NN
     create decoder NN
     train autoencoder
