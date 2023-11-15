@@ -1,0 +1,126 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import ndimage
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Flatten, Conv1D, MaxPooling1D, Dropout, BatchNormalization
+from tensorflow.keras.utils import to_categorical
+
+from data_set import data_sides, img_dim, plot_dataset
+from shape_generator import grid, inside_circle, inside_square, inside_triangle, img_dim
+from ML_side_number import graph2d
+'''i need a function that will act like data_set but for projections.'''
+
+def intensity(data, angle):
+    '''takes a data (2d pixell image/array), decides an angle to take the 'image' from
+    condenses the image along the axis of this angle to form an intensity graph
+    angle in rads'''
+    #np.sum(dat[0][4], 1) is left to right
+    #np.sum(dat[0][4], 0) is up to down
+    # print('gygugu', data)
+    data0 = data[0] #the actual data
+    valid = data[1] #the labels
+    intensities = []
+    for i in range(len(data0)):
+        ndimage.rotate(data0[0], -angle, reshape=False)#can this be done outside for loop?
+        #minus angle will rotate that fixed angle slice to the top of the image
+        intensities.append(np.sum(data0[i], 0)) #now it is summed top down, for the angle to work
+    return intensities, valid
+
+# d = data_sides(img_dim, 5)
+# i = intensity(d, 0)
+
+def plot_intensities(intens):
+    num = len(intens[1])
+    fig, axs = plt.subplots(1, num)  # 1 row, 5 columns, figure size is set to 15x3
+
+    for i in range(num):
+        axs[i].plot(intens[0][i])  # Using grayscale colormap for clarity
+        # axs[i].axis('off')  # To hide axis values
+        axs[i].set_title(f"Sides: {intens[1][i]}")  # Setting title as the number of sides
+
+    plt.tight_layout()  # Adjust spacing between images
+    plt.show()
+# plot_intensities(i)
+
+def data_proj2d(dim, num):
+    '''creates a dataset to train the intensity neural network'''
+    starto = np.zeros((num,5)) #basic empty array of start
+
+    '''these are randomised start values for the shapes'''
+    xcs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2).round(1)
+    ycs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2).round(1)
+    r = ((np.random.rand(num)+1)*dim/8).round(1)
+    angle = (np.random.rand(num)*(np.pi*2)).round(2)
+    shape = np.random.randint(0,3,num)
+
+    '''indexes starto to add the start values'''
+    starto[np.arange(num), np.zeros(num,int)] = xcs
+    starto[np.arange(num), np.zeros(num,int)+1] = ycs
+    starto[np.arange(num), np.zeros(num,int)+2] = r
+    starto[np.arange(num), np.zeros(num,int)+3] = angle
+    starto[np.arange(num), np.zeros(num,int)+4] = shape
+    
+    
+    s = starto#redefine for ease of typing
+    a = grid(dim)#grid for making pixels on
+    
+    
+    intensities=[] #this is the list containing all of the grids
+    valid = [] #list of labels
+    for i in np.arange(num):
+        if s[np.arange(num), np.zeros(num,int)+4][i] == 0:
+            '''if shape value is 0, it is a circle.
+            make a pixel array using the inside_shape functions and the corresponding start values.
+            create an img_dim by img_dim array and add to higher order array with the shape value.
+            make a list of these'''
+            # print('circle')
+            temp = np.sum(inside_circle(a[0], a[1], s[i][0], s[i][1], s[i][2], 0, dim), 0)
+            temp2 = s[i][4]
+        elif s[np.arange(num), np.zeros(num,int)+4][i] == 1:
+            # print('triangle')
+            temp = np.sum(inside_triangle(a[0], a[1], s[i][0], s[i][1], s[i][2], s[i][3], dim), 0)
+            temp2 = s[i][4]
+        elif s[np.arange(num), np.zeros(num,int)+4][i] == 2:
+            # print('square')
+            temp = np.sum(inside_square(a[0], a[1], s[i][0], s[i][1], s[i][2], s[i][3], dim), 0)
+            temp2 = s[i][4]
+        intensities.append(temp)
+        valid.append(temp2)
+    return intensities, valid
+
+def train2d_proj(dim, num):
+    Data = data_proj2d(dim, num)  # Generating a larger dataset for training
+    
+    # Reshaping images for the model and normalizing
+    X = np.array([Data[0]]).reshape(-1, dim, 1)
+    
+    # Converting labels to one-hot encoding.
+    Y = to_categorical(Data[1])
+    # print(X.shape, Y.shape)
+    # print(Y)
+    # Splitting the dataset into training and validation sets
+    train_size = int(0.8 * len(X))
+    X_train, X_val = X[:train_size], X[train_size:]
+    Y_train, Y_val = Y[:train_size], Y[train_size:]
+    
+    # 2. Building the Model
+    model = Sequential([
+        Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(dim, 1)),
+        Conv1D(filters=64, kernel_size=3, activation='relu'),
+        Dropout(0.5),
+        MaxPooling1D(pool_size=2),
+        Flatten(),
+        Dense(100, activation='relu'),
+        Dense(3, activation='softmax'),
+    ])
+    
+    
+    # Compiling the model
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    
+    # 3. Training the Model
+    history = model.fit(X_train, Y_train, validation_data=(X_val, Y_val), epochs=15, batch_size=16)
+    return history
+
+graph2d(train2d_proj(64, 1000))
