@@ -1,0 +1,67 @@
+import numpy as np
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, Dropout, BatchNormalization
+from tensorflow.keras.utils import to_categorical
+import matplotlib.pyplot as plt
+from data_set import data_sides
+
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+#potentially bad. this is unstable solution to previous problem
+def train2d_sides(dim, num):
+    Data = data_sides(dim, num)  # Generating a larger dataset for training
+    
+    # Reshaping images for the model and normalizing
+    X = np.array([Data[0]]).reshape(-1, dim, dim, 1)
+    
+    # Converting labels to one-hot encoding.
+    Y = to_categorical(Data[1])
+    # print(X.shape, Y.shape)
+    # print(Y)
+    # Splitting the dataset into training and validation sets
+    train_size = int(0.8 * len(X))
+    X_train, X_val = X[:train_size], X[train_size:]
+    Y_train, Y_val = Y[:train_size], Y[train_size:]
+    
+    # 2. Building the Model
+    model = Sequential([
+        Conv2D(64, kernel_size=(3, 3), activation='relu', input_shape=(dim, dim, 1)),
+        MaxPooling2D(pool_size=(2, 2)),
+        Dropout(0.1),
+        Conv2D(32, kernel_size=(3, 3), activation='relu'),
+        MaxPooling2D(pool_size=(2, 2)),
+        Dropout(0.1),
+        Conv2D(16, kernel_size=(3, 3), activation='relu'),
+        MaxPooling2D(pool_size=(2, 2)),
+        Dropout(0.1),
+        Flatten(),
+        Dense(64, activation='relu'),
+        Dropout(0.1),
+        Dense(3, activation='softmax')
+    ])
+    
+    
+    # Compiling the model
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    
+    # 3. Training the Model
+    history = model.fit(X_train, Y_train, validation_data=(X_val, Y_val), epochs=15, batch_size=16)
+    return history
+
+def graph2d(history):
+    # Optional: Visualize training progress
+    plt.plot(history.history['accuracy'], label='accuracy')
+    plt.plot(history.history['val_accuracy'], label='val_accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.ylim([0, 1])
+    plt.legend(loc='lower right')
+    plt.show()
+
+
+# graph2d(train2d_sides(64, 1000))
+
+
+
+
+
