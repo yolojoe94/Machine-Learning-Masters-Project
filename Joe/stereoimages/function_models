@@ -1,0 +1,204 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.ndimage import gaussian_filter
+from scipy.spatial.transform import Rotation as R
+
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, Dropout, BatchNormalization
+from tensorflow.keras.layers import concatenate, Input
+from tensorflow.keras.utils import to_categorical, plot_model
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+
+'''plan:
+    make 2d space array
+    define squares
+    construct large array of pairs of squares at random angles
+    add noise
+    preprocess
+    make training and validation data
+    use multiple inputs and train with labelled pairs'''
+    
+'''later:
+    create encoder NN
+    create decoder NN
+    train autoencoder
+    display selection of results
+    add lock for encoder
+    train fully
+    make confusion matrix
+    '''
+
+def grid2d(size):
+    '''creates values of coords up to image size, then makes grid of coords.
+    does this _number_ of times to make 3d grid of unrelated slices'''
+    xx, yy = np.meshgrid(np.linspace(0,size-1,size),
+                            np.linspace(0,size-1,size), sparse=True)
+    return xx, yy
+
+def preprocess(x, y, grid, dim):
+    '''recenters image using average mass position
+    doesnt work on y height ??'''
+    proc = np.where(grid>0.3, 1, 0)
+    # print(proc, '\n')
+    # plt.matshow(proc)
+    dx = np.sum(x*proc)/np.sum(proc)-dim/2
+    dy = np.sum(y*proc)/np.sum(proc)-dim/2
+    # print(dx,dy)
+    im = np.roll(proc, -int(np.round(dy)), axis=0)
+    im = np.roll(im, -int(np.round(dx)), axis=1)
+    #this is just not moving the y coord for some reason
+    # print(im)
+    # plt.matshow(im)
+    return im
+
+def inside_square(space, center, size, angle, dim):
+    '''takes consts and defines region where inside square, sets the grid values to 1, else 0'''
+    #l is the max square radius
+    nx = np.sin(angle)
+    ny = np.cos(angle) #normal vectors to edge, to determine if coord is inside or outside edge
+    im_sq = np.where((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny)<size/2)
+                     & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx)<size/2),
+                     1, 0)
+    #second condition uses tangent vectors to edge to find other two edges
+    #absolute allows both edges to be considered at once
+    #size/2 is the half side length
+    im_sq = np.add(im_sq, np.random.random([dim,dim])/5) #unprocessed image
+    im_sq = gaussian_filter(im_sq, sigma=0.1)
+    return preprocess(grid2d(dim)[0], grid2d(dim)[1], im_sq, dim)
+
+
+def data_train(dim, num):
+    '''creates dataset of num dim*dim images
+    returns arrays of shapes, the stereoimages for each shape and the angle between them'''
+    a_s = np.zeros((num,3))
+    c_s = np.zeros((num,2))
+                      
+    '''these are randomised start values for the shapes'''
+    xcs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2).round(1)
+    ycs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2).round(1)
+    length = ((np.random.rand(num)+1)*dim/4).round(1)
+    a1 = (np.random.randint(0,9,num)).round(0)#in degrees
+    a2 = (np.random.randint(0,9,num)).round(0)#in degrees
+
+    c_s[np.arange(num), np.zeros(num,int)] = xcs
+    c_s[np.arange(num), np.zeros(num,int)+1] = ycs #centers
+    
+    a_s[np.arange(num), np.zeros(num,int)] = (a1/18*np.pi).round(2)#in radians
+    a_s[np.arange(num), np.zeros(num,int)+1] = (a2/18*np.pi).round(2)#in radians
+    # a_s[np.arange(num), np.zeros(num,int)+2] = np.absolute((a2*10-a1*10))#in degrees
+    a_s[np.arange(num), np.zeros(num,int)+2] = a1#in degrees
+    print(a_s[0:5])
+    a = grid2d(dim)#grid for making pixels on
+    
+    grid1=[] #this is the list containing all image 1s of 2s
+    grid2=[] #stereopair images
+    angle=[]
+    for i in np.arange(num):
+        c1 = inside_square(a, c_s[i], length[i], a_s[i][0], dim)
+        c2 = inside_square(a, c_s[i], length[i], a_s[i][1], dim)
+        grid1.append(c1)
+        grid2.append(c2)
+        angle.append(a_s[i][2])
+
+    return grid1, grid2, np.array(angle)
+
+def CNN(dim):
+    inputs = Input(shape=(dim, dim, 1))
+    x = Conv2D(64, kernel_size=(3, 3), activation='relu')(inputs)
+    x = MaxPooling2D(pool_size=(2, 2))(x)
+    x = Dropout(0.1)(x)
+    x = Conv2D(32, kernel_size=(3, 3), activation='relu')(x)
+    x = MaxPooling2D(pool_size=(2, 2))(x)
+    x = Dropout(0.1)(x)
+    x = Conv2D(16, kernel_size=(3, 3), activation='relu')(x)
+    x = MaxPooling2D(pool_size=(2, 2))(x)
+    x = Dropout(0.1)(x)
+    x = Flatten()(x)
+    outputs = Dense(1, activation='linear')(x)
+    model = Model(inputs=inputs, outputs=outputs)
+    model.summary()
+    # print('inputs =', inputs)
+    return model
+
+def mixed_input(dim):
+    inputs = Input(shape=(2*dim, dim, 1))
+    
+    cnn1 = CNN(dim)
+    out1 = cnn1(inputs[:, :dim, :, :])
+    out2 = cnn1(inputs[:, dim:, :, :])
+    combined_input = concatenate([out1, out2]) 
+    z = Dense(10, activation='relu')(combined_input)
+    z = Dropout(0.1)(z)
+    output = Dense(1, activation='linear')(z)#supposed to be 9 for the angles
+    # our model will accept the inputs of the two branches and
+    # then output a single value
+    model = Model(inputs=inputs, outputs=output)
+    model.summary()
+    plot_model(model, "my_first_model_with_shape_info.png", show_shapes=True)
+    return model
+
+def train_dual_input(dim, num):
+    '''attempts to train using multiple inputs
+    input X is the image and Y is its stereopair
+    the goal is to understand multiple input CNNs for later use'''
+    train = data_train(dim, num)
+    
+    # Reshaping images for the model and normalizing
+    X = np.array([train[0]]).reshape(-1, dim, dim, 1)*1.0
+    Y = np.array([train[1]]).reshape(-1, dim, dim, 1)*1.0
+    # Splitting the dataset into training and validation sets
+    train_size = int(0.8 * len(X))
+    X_train, X_val = X[:train_size], X[train_size:]
+    Y_train, Y_val = Y[:train_size], Y[train_size:]
+    X_st = np.hstack([X_train, Y_train])
+    X_st_val = np.hstack([X_val, Y_val])
+    Z = train[2]
+    Z_train, Z_val = Z[:train_size], Z[train_size:]
+    
+    
+    # Compiling the model
+    model = mixed_input(dim)
+    model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
+    
+    
+    # 3. Training the Model
+    history = model.fit(x=X_st, y=Z_train,
+                        validation_data=(X_st_val, Z_val), epochs=15, batch_size=16)
+    # predictions = (model.predict([X,Y]) > 0.5).astype(int)
+    return history, model, (X_st, Z_train, X_st_val, Z_val)
+    
+
+
+def graph2d(history):
+    # Optional: Visualize training progress
+    plt.plot(history.history['accuracy'], label='accuracy')
+    plt.plot(history.history['val_accuracy'], label='val_accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.ylim([0, 1])
+    plt.legend(loc='lower right')
+    plt.show()
+    pass
+# print(data_train(6,5))
+# train_dual_input(64,1000)
+h, model, d = train_dual_input(64,1000)
+graph2d(h)
+predictions = model.predict(d[0])
+plt.plot(d[1], predictions, '.')
+
+def plot_dataset(num=5):
+    data3 = data_train(64, num)
+
+    fig, axs = plt.subplots(2, 5)  # 1 row, 5 columns, figure size is set to 15x3
+
+    for i in range(5):
+        axs[0][i].imshow(data3[0][i], cmap='gray')#, vmax=1.2, vmin=-0.2)  # Using grayscale colormap for clarity
+        axs[1][i].imshow(data3[1][i], cmap='gray')
+        axs[0][i].axis('off')  # To hide axis values
+        axs[1][i].axis('off')
+        axs[0][i].set_title(f"Shape: {data3[2][i]}")  # Setting title as the number of sides
+
+    plt.tight_layout()  # Adjust spacing between images
+    plt.show()
+# plot_dataset()
