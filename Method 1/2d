@@ -215,7 +215,8 @@ def scatter_validation2(CNN, dim, num, max_angle, batch_size, epochs, trial, GAM
     y-axis: prediction of shape 1 angle (blue), shape 2 (orange) and gamma (green)
     x-axis: actual shape 1 input ngle
     trial is to show whether the model is expected to be trained'''
-    
+    fig, (ax1, ax2) = plt.subplots(2,1, layout='constrained', sharex=True)
+    fig.suptitle('Vertically stacked subplots')
     print('scatter_validation')
     #generate test data
     test = data_train(dim, round(num/10), max_angle)
@@ -228,13 +229,15 @@ def scatter_validation2(CNN, dim, num, max_angle, batch_size, epochs, trial, GAM
     angle2_pred = np.reshape(CNN.predict(X_st2), -1)
     gamma_pred = np.reshape(GAMMA_MyGamma.predict(X_g), -1)
     #scatter the results
-    plt.scatter(test[1][:,2], np.rad2deg(angle_pred), c='blue')
-    plt.scatter(test[1][:,2], np.rad2deg(angle2_pred), c='orange')
-    plt.scatter(test[1][:,2], gamma_pred, c='green')
-    plt.scatter(test[1][:,2], np.rad2deg(gamma_pred), c='red')
-    plt.grid()
-    plt.xlabel('Actual Values of shape 1')
-    plt.ylabel('Angle prediction')
+    ax1.scatter(test[1][:,2], np.rad2deg(angle_pred), c='blue')
+    ax1.scatter(test[1][:,2], np.rad2deg(angle2_pred), c='orange')
+    # ax2.scatter(test[1][:,2], gamma_pred, c='green')
+    ax2.scatter(test[1][:,2], np.rad2deg(gamma_pred), c='red')
+    ax1.grid()
+    ax2.grid()
+    ax2.set_xlabel('Actual Values of shapes')
+    ax1.set_ylabel('Angle prediction of \nShapes 1&2')
+    ax2.set_ylabel('Angle prediction of \ngamma')
     # plt.text(0.12, 2,
     #          f'trial = {trial}\nbatch_size = {batch_size} \nepochs = {epochs}',#'\nr.m.s = {mu}$^\circ$ \nstd = {sigma}$^\circ$ \n',
     #          fontsize=14,
@@ -296,6 +299,6 @@ np.set_printoptions(suppress=True)
 
 #run the training
 #dim is set to 32 for no apparent reason, but fails on 64
-dim, num, max_angle, batch_size, epochs = 32, 1000, 85, 25, 8
+dim, num, max_angle, batch_size, epochs = 32, 1000, 85, 25, 1
 run(dim, num, max_angle, batch_size, epochs)
 
