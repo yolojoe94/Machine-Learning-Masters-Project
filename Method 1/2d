@@ -42,16 +42,11 @@ def preprocess(x, y, grid, dim):
     '''recenters image using average mass position
     doesnt work on y height ??'''
     proc = np.where(grid>0.3, 1, 0)
-    # print(proc, '\n')
-    # plt.matshow(proc)
     dx = np.sum(x*proc)/np.sum(proc)-dim/2
     dy = np.sum(y*proc)/np.sum(proc)-dim/2
-    # print(dx,dy)
     im = np.roll(proc, -int(np.round(dy)), axis=0)
     im = np.roll(im, -int(np.round(dx)), axis=1)
     #this is just not moving the y coord for some reason
-    # print(im)
-    # plt.matshow(im)
     return im
 
 def inside_square(space, center, size, angle, dim):
@@ -71,7 +66,6 @@ def inside_square(space, center, size, angle, dim):
 
 
 def data_train(dim, num, max_angle):
-    print('data_train')
     '''creates dataset of num dim*(2*dim) images
     res determines number of intervals between 0 and 90 degrees
     returns arrays of shapes, the stereoimages for each shape and the angle between them'''
@@ -95,7 +89,6 @@ def data_train(dim, num, max_angle):
     a_s[np.arange(num), np.zeros(num,int)+2] = a1#in degrees
     '''this is important, the validation for the training is the first angle.
     that means we will be asking for only one angle as our final output'''
-    print('a_s = ', a_s[0:5])
     a = grid2d(dim)#grid for making pixels on
     
     grid1=[] #this is the list containing all image 1s of 2s
@@ -112,7 +105,6 @@ def data_train(dim, num, max_angle):
     return grids, a_s
 
 def CNN_model(dim):
-    print('CNN')
     '''takes an image input
     outputs an angle for the image orientation'''
     inputs = Input(shape=(dim, dim, 1))
@@ -132,7 +124,6 @@ def CNN_model(dim):
     return model
 
 def GAMMA_model():
-    print('GAMMA')
     '''takes no input, and gives a single output
     aim is to guess the rotational symmetry of the shape'''
     #problem here trying to make empty input
@@ -143,7 +134,6 @@ def GAMMA_model():
     return gamma_model
 
 def STEREO_model(dim,  num, batch_size, epochs):
-    print('mixed_input')
     '''takes a double width dual image, splits and determines the angle of each
     then outputs a single angle
     in theory: it takes correct angles from both shapes and only returns shape two,
@@ -167,15 +157,8 @@ def STEREO_model(dim,  num, batch_size, epochs):
     g = gamma_model(inputs_g)
     
     sub = tfm.subtract(c2, c1)
-    print('sub = ', sub)
     add = tfm.add(sub, g)
-    # out4 = tf.concat([sub, add], 1)
-    # print('out4 = ', out4)
-    # print('abs(out4) = ', tfm.abs(out4))
-    # print('min = ', tfm.reduce_min(tfm.abs(out4)))
-    # output = tfm.reduce_min(tfm.abs(out4))
     output = tfm.minimum(add, sub)
-    print('output = ', output)
     
     stereo_model = Model(inputs=[inputs_st1, inputs_st2, inputs_g], outputs=output)
     stereo_model.summary()
@@ -187,7 +170,6 @@ def scatter_validation(model1, dim, num, max_angle, batch_size, epochs, trial):
     x-axis: predicted angular separation
     trial is to show whether the model is expected to be trained'''
     
-    print('scatter_validation')
     #generate test data
     test = data_train(dim, round(num/10), max_angle)
     X_g = np.ones((round(num/10), 1))
@@ -197,8 +179,6 @@ def scatter_validation(model1, dim, num, max_angle, batch_size, epochs, trial):
     y_prediction = np.reshape(model1.predict(X_test), -1)
     
     #scatter the results
-    print('y_pred shape  = ', y_prediction.shape)
-    print('test[1][:,2] shape = ', test[1][:,2].shape)
     plt.scatter(test[1][:,2], y_prediction)
     plt.grid()
     plt.xlabel('Actual Values of shape 1')
@@ -216,8 +196,7 @@ def scatter_validation2(CNN, dim, num, max_angle, batch_size, epochs, trial, GAM
     x-axis: actual shape 1 input ngle
     trial is to show whether the model is expected to be trained'''
     fig, (ax1, ax2) = plt.subplots(2,1, layout='constrained', sharex=True)
-    fig.suptitle('Vertically stacked subplots')
-    print('scatter_validation')
+    fig.suptitle(f'Vertically stacked subplots, max angle = {max_angle}')
     #generate test data
     test = data_train(dim, round(num/10), max_angle)
     X_g = np.ones((round(num/10), 1))
@@ -229,21 +208,18 @@ def scatter_validation2(CNN, dim, num, max_angle, batch_size, epochs, trial, GAM
     angle2_pred = np.reshape(CNN.predict(X_st2), -1)
     gamma_pred = np.reshape(GAMMA_MyGamma.predict(X_g), -1)
     #scatter the results
-    ax1.scatter(test[1][:,2], np.rad2deg(angle_pred), c='blue')
-    ax1.scatter(test[1][:,2], np.rad2deg(angle2_pred), c='orange')
+    ax2.scatter(test[1][:,2], np.rad2deg(angle_pred), c='blue')
+    ax2.scatter(test[1][:,2], np.rad2deg(angle2_pred), c='orange')
     # ax2.scatter(test[1][:,2], gamma_pred, c='green')
-    ax2.scatter(test[1][:,2], np.rad2deg(gamma_pred), c='red')
-    ax1.grid()
+    ax1.scatter(test[1][:,2], np.rad2deg(gamma_pred), c='red')
     ax2.grid()
+    ax1.grid()
     ax2.set_xlabel('Actual Values of shapes')
-    ax1.set_ylabel('Angle prediction of \nShapes 1&2')
-    ax2.set_ylabel('Angle prediction of \ngamma')
-    # plt.text(0.12, 2,
-    #          f'trial = {trial}\nbatch_size = {batch_size} \nepochs = {epochs}',#'\nr.m.s = {mu}$^\circ$ \nstd = {sigma}$^\circ$ \n',
-    #          fontsize=14,
-    #     verticalalignment='top')
-    # plt.savefig(f'fnct_mdl_SCATTER_num{num}_bs{batch_size}_epochs{epochs}')
+    ax2.set_ylabel('Angle prediction of \nShapes 1&2')
+    ax1.set_ylabel('Angle prediction of \ngamma')
+    plt.savefig(f'max_angle{max_angle}_dim{dim}_num{num}_bs{batch_size}_epochs{epochs}')
     plt.show()
+    return np.average(np.rad2deg(gamma_pred))
 
 def custom_loss_function(y_true, y_pred):
     dif = y_true - y_pred
@@ -254,31 +230,32 @@ def custom_loss_function(y_true, y_pred):
     min_dif = tfm.minimum(tensor, squared_dif)
     return tf.reduce_mean(min_dif, axis=-1)
 
-def run(dim, num, max_angle, batch_size, epochs):
-    print('run')
+def run(dim, num, max_angle, batch_size, epochs, use_save):
+    '''use_save = [True/False, gamma]'''
     '''res is number of intrvals from 0-90deg'''
-    #Aquire model without training
-    stereo_model, cnn1_model, gamma_model = STEREO_model(dim, num, batch_size, epochs)
+    if use_save[0] == False:
+        #Aquire model without training
+        stereo_model, cnn1_model, gamma_model = STEREO_model(dim, num, batch_size, epochs)
+    elif use_save[0] == True:
+        #use a previously saved gamma model
+        stereo_model, cnn1_model, gamma_model = STEREO_model(dim, num, batch_size, epochs)
+        gamma_model = keras.models.load_model(f'GAMMA_model = {use_save[1]}.keras')
     
     #graph something
     '''???'''
-    scatter_validation(stereo_model, dim, num, max_angle, batch_size, epochs, 'true')
+    # scatter_validation(stereo_model, dim, num, max_angle, batch_size, epochs, 'true')
 
     #construct data
     train = data_train(dim, num, max_angle)
     train_size = int(0.8 * num)
-    print('train.shape = ', train[1].shape)
     X_g, V_g = np.ones((num, 1))[:train_size], np.ones((num, 1))[train_size:]
     X_st1 = train[0][:, :dim, :, :][:train_size]
     V_st1 = train[0][:, dim:, :, :][train_size:]
     X_st2 = train[0][:, dim:, :, :][:train_size]
     V_st2 = train[0][:, dim:, :, :][train_size:]
-    print(X_g[0:5])
     X_train = [X_st1, X_st2, X_g]
     X_val = [V_st1, V_st2, V_g]
 
-    print('X sizes = ', X_train[0].shape, X_train[1].shape, X_train[2].shape)
-    print('V sizes = ', X_val[0].shape, X_val[1].shape, X_val[2].shape)
     Y = train[1]
     #take differences of two angles
     Y_train, Y_val = Y[:train_size,1]-Y[:train_size,0], Y[train_size:, 1]-Y[train_size:,0]
@@ -291,14 +268,40 @@ def run(dim, num, max_angle, batch_size, epochs):
                         validation_data=(X_val, Y_val), epochs=epochs, batch_size=batch_size)
     
     #graph guesses at sep_angle
-    scatter_validation(stereo_model, dim, num, max_angle, batch_size, epochs, 'false')
-    scatter_validation2(cnn1_model, dim, num, max_angle, batch_size, epochs, 'false', gamma_model)
-
+    # scatter_validation(stereo_model, dim, num, max_angle, batch_size, epochs, 'false')
+    g = scatter_validation2(cnn1_model, dim, num, max_angle, batch_size, epochs, 'false', gamma_model)
+    #save gamma model for retraining
+    use_save[1] = round(g,1)
+    gamma_model.save(f'GAMMA_model = {use_save[1]}.keras')
+        
 #supress scientific notation because its hard to read
 np.set_printoptions(suppress=True)
 
 #run the training
 #dim is set to 32 for no apparent reason, but fails on 64
-dim, num, max_angle, batch_size, epochs = 32, 1000, 85, 25, 1
-run(dim, num, max_angle, batch_size, epochs)
+a=1
+while a<4:
+    dim, num, max_angle, batch_size, epochs = 64, 1000, 90, 25, 2
+    run(dim, num, max_angle, batch_size, epochs, [True, 94.4])
+    a+=1
+    print(a)
+# while a<8:
+#     dim, num, max_angle, batch_size, epochs = 64, 1000, 90, 25, 4
+#     run(dim, num, max_angle, batch_size, epochs, [False, -1])
+#     a+=1
+#     print(a)
+# while a<12:
+#     dim, num, max_angle, batch_size, epochs = 64, 1000, 90, 25, 8
+#     run(dim, num, max_angle, batch_size, epochs, [False, -1])
+#     a+=1
+#     print(a)
+# while a<16:
+#     dim, num, max_angle, batch_size, epochs = 64, 1000, 90, 25, 12
+#     run(dim, num, max_angle, batch_size, epochs, [False, -1])
+#     a+=1
+#     print(a)
+
+dim, num, max_angle, batch_size, epochs = 64, 1000, 85, 25, 1
+run(dim, num, max_angle, batch_size, epochs, [True, 94.4])
+
 
