@@ -1,2 +1,1 @@
-# NanoProject
-Using ML to identify nanoparticle structures from STEM
+Using Machine Learning to Investigate Rotations in HAADF-STEM Images of Large Nano-particle Structures
