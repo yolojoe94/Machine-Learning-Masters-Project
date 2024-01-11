@@ -8,7 +8,6 @@ Created on Mon Jan  8 16:04:30 2024
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
-from scipy.spatial.transform import Rotation as R
 
 
 import tensorflow as tf
