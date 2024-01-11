@@ -70,7 +70,7 @@ def inside_square(space, center, size, angle, dim):
     return preprocess(grid2d(dim)[0], grid2d(dim)[1], im_sq, dim)
 
 
-def data_train(dim, num):
+def data_train(dim, num, max_angle):
     print('data_train')
     '''creates dataset of num dim*(2*dim) images
     res determines number of intervals between 0 and 90 degrees
@@ -84,18 +84,18 @@ def data_train(dim, num):
     length = ((np.random.rand(num)+1)*dim/4).round(1)
     length[:] = dim/2
     #this 0, 90 defines the angular range of results
-    a1 = (np.random.uniform(0, 85, num)).round(0)#in degrees
+    a1 = (np.random.uniform(0, max_angle, num)).round(0)#in degrees
     a2 = a1+10
     c_s[np.arange(num), np.zeros(num,int)] = xcs
     c_s[np.arange(num), np.zeros(num,int)+1] = ycs #centers
     
-    a_s[np.arange(num), np.zeros(num,int)] = (a1/180*np.pi).round(2)#in radians
-    a_s[np.arange(num), np.zeros(num,int)+1] = (a2/180*np.pi).round(2)#in radians
+    a_s[np.arange(num), np.zeros(num,int)] = (a1/180*np.pi)#in radians
+    a_s[np.arange(num), np.zeros(num,int)+1] = (a2/180*np.pi)#in radians
     # a_s[np.arange(num), np.zeros(num,int)+2] = np.absolute((a2*10-a1*10))#in degrees
     a_s[np.arange(num), np.zeros(num,int)+2] = a1#in degrees
     '''this is important, the validation for the training is the first angle.
     that means we will be asking for only one angle as our final output'''
-    # print('a_s = ', a_s[0:5])
+    print('a_s = ', a_s[0:5])
     a = grid2d(dim)#grid for making pixels on
     
     grid1=[] #this is the list containing all image 1s of 2s
@@ -111,7 +111,7 @@ def data_train(dim, num):
                np.array([grid2]).reshape(-1, dim, dim, 1)*1.0])
     return grids, a_s
 
-def CNN(dim):
+def CNN_model(dim):
     print('CNN')
     '''takes an image input
     outputs an angle for the image orientation'''
@@ -131,44 +131,44 @@ def CNN(dim):
     model.summary()
     return model
 
-def GAMMA():
+def GAMMA_model():
     print('GAMMA')
     '''takes no input, and gives a single output
     aim is to guess the rotational symmetry of the shape'''
     #problem here trying to make empty input
-    inputs=Input(shape=(1))
-    x = Dense(20, activation='relu')(inputs)
-    outputs = Dense(1, activation='relu')(x)
-    model = Model(inputs=inputs, outputs=outputs)
-    model.summary()
-    # print('inputs =', inputs)
-    return model
+    inputs_ones = Input(shape=(1,))
+    out_gamma = Dense(1, activation='linear', use_bias=False)(inputs_ones)
+    gamma_model = Model(inputs=inputs_ones, outputs=out_gamma)
+    gamma_model.summary()
+    return gamma_model
 
-
-
-def mixed_input(dim,  num, batch_size, epochs):
+def STEREO_model(dim,  num, batch_size, epochs):
     print('mixed_input')
     '''takes a double width dual image, splits and determines the angle of each
     then outputs a single angle
     in theory: it takes correct angles from both shapes and only returns shape two,
     this means you can give it a 0&unknown angle pair to get the unknowns,
     it is accurate on both as the same CNN is trained on each of images 1&2'''
-    inputs = Input(shape=(2*dim, dim, 1))
+  
     
-    cnn1 = CNN(dim)
     # cnn1 = keras.models.load_model(f'cnn1_fnct_mdl_num{num}_bs{batch_size}_epochs{epochs}.keras')
     '''first of above trains without pretrained cnn, second uses pretrained(to recognise angles)'''
-    out1 = cnn1(inputs[:, :dim, :, :])
-    out2 = cnn1(inputs[:, dim:, :, :])
+   
+    cnn_model = CNN_model(dim)
+    gamma_model = GAMMA_model()
     
-    #try to find 90 degrees
-    gamma = GAMMA()
-    #take empty input
-    out3 = gamma(inputs[:,0,0,:])
     
-    sub = tfm.subtract(out2, out1)
+    inputs_st1 = Input(shape=(dim, dim, 1))
+    inputs_st2 = Input(shape=(dim, dim, 1))
+    inputs_g = Input(shape=(1,))
+    
+    c1 = cnn_model(inputs_st1)
+    c2 = cnn_model(inputs_st2)
+    g = gamma_model(inputs_g)
+    
+    sub = tfm.subtract(c2, c1)
     print('sub = ', sub)
-    add = tfm.add(sub, out3)
+    add = tfm.add(sub, g)
     # out4 = tf.concat([sub, add], 1)
     # print('out4 = ', out4)
     # print('abs(out4) = ', tfm.abs(out4))
@@ -177,11 +177,11 @@ def mixed_input(dim,  num, batch_size, epochs):
     output = tfm.minimum(add, sub)
     print('output = ', output)
     
-    model = Model(inputs=inputs, outputs=output)
-    model.summary()
-    return model, cnn1, gamma
+    stereo_model = Model(inputs=[inputs_st1, inputs_st2, inputs_g], outputs=output)
+    stereo_model.summary()
+    return stereo_model, cnn_model, gamma_model
 
-def scatter_validation(model1, num, batch_size, epochs, trial):
+def scatter_validation(model1, dim, num, max_angle, batch_size, epochs, trial):
     '''take range of inputs and produce graph of them vs predicitons from a model
     y-axis: values of shape 1's angle
     x-axis: predicted angular separation
@@ -189,9 +189,13 @@ def scatter_validation(model1, num, batch_size, epochs, trial):
     
     print('scatter_validation')
     #generate test data
-    test = data_train(32, round(num/10))
-    #Predict angular separation
-    y_prediction = np.reshape(model1.predict(np.array(test[0])), -1)
+    test = data_train(dim, round(num/10), max_angle)
+    X_g = np.ones((round(num/10), 1))
+    X_st1 = test[0][:, :dim, :, :]
+    X_st2 = test[0][:, dim:, :, :]
+    X_test = [X_st1, X_st2, X_g]
+    y_prediction = np.reshape(model1.predict(X_test), -1)
+    
     #scatter the results
     print('y_pred shape  = ', y_prediction.shape)
     print('test[1][:,2] shape = ', test[1][:,2].shape)
@@ -206,7 +210,7 @@ def scatter_validation(model1, num, batch_size, epochs, trial):
     # plt.savefig(f'fnct_mdl_SCATTER_num{num}_bs{batch_size}_epochs{epochs}')
     plt.show()
 
-def scatter_validation2(CNN, num, batch_size, epochs, trial, dim, GAMMA_MyGamma):
+def scatter_validation2(CNN, dim, num, max_angle, batch_size, epochs, trial, GAMMA_MyGamma):
     '''take range of inputs and produce graph of them vs predicitons from a model
     y-axis: prediction of shape 1 angle (blue), shape 2 (orange) and gamma (green)
     x-axis: actual shape 1 input ngle
@@ -214,15 +218,20 @@ def scatter_validation2(CNN, num, batch_size, epochs, trial, dim, GAMMA_MyGamma)
     
     print('scatter_validation')
     #generate test data
-    test = data_train(32, round(num/10))
+    test = data_train(dim, round(num/10), max_angle)
+    X_g = np.ones((round(num/10), 1))
+    X_st1 = test[0][:, :dim, :, :]
+    X_st2 = test[0][:, dim:, :, :]
+    X_test = [X_st1, X_st2, X_g]
     #Predict angular separation
-    angle_pred = np.reshape(CNN.predict(np.array(test[0][:, :dim, :, :])), -1)
-    angle2_pred = np.reshape(CNN.predict(np.array(test[0][:, dim:, :, :])), -1)
-    gamma_pred = np.reshape(GAMMA_MyGamma.predict(np.array(test[0][:, 0, 0, :])), -1)
+    angle_pred = np.reshape(CNN.predict(X_st1), -1)
+    angle2_pred = np.reshape(CNN.predict(X_st2), -1)
+    gamma_pred = np.reshape(GAMMA_MyGamma.predict(X_g), -1)
     #scatter the results
     plt.scatter(test[1][:,2], np.rad2deg(angle_pred), c='blue')
     plt.scatter(test[1][:,2], np.rad2deg(angle2_pred), c='orange')
     plt.scatter(test[1][:,2], gamma_pred, c='green')
+    plt.scatter(test[1][:,2], np.rad2deg(gamma_pred), c='red')
     plt.grid()
     plt.xlabel('Actual Values of shape 1')
     plt.ylabel('Angle prediction')
@@ -242,44 +251,51 @@ def custom_loss_function(y_true, y_pred):
     min_dif = tfm.minimum(tensor, squared_dif)
     return tf.reduce_mean(min_dif, axis=-1)
 
-def run(num, batch_size, epochs):
+def run(dim, num, max_angle, batch_size, epochs):
     print('run')
     '''res is number of intrvals from 0-90deg'''
-    #dim is set to 32 for no apparent reason, but fails on 64
-    dim = 32
     #Aquire model without training
-    model, cnn1, gamma = mixed_input(dim, num, batch_size, epochs)
+    stereo_model, cnn1_model, gamma_model = STEREO_model(dim, num, batch_size, epochs)
     
     #graph something
     '''???'''
-    scatter_validation(model, num, batch_size, epochs, 'true')
+    scatter_validation(stereo_model, dim, num, max_angle, batch_size, epochs, 'true')
 
     #construct data
-    train = data_train(dim, num)    
+    train = data_train(dim, num, max_angle)
+    train_size = int(0.8 * num)
+    print('train.shape = ', train[1].shape)
+    X_g, V_g = np.ones((num, 1))[:train_size], np.ones((num, 1))[train_size:]
+    X_st1 = train[0][:, :dim, :, :][:train_size]
+    V_st1 = train[0][:, dim:, :, :][train_size:]
+    X_st2 = train[0][:, dim:, :, :][:train_size]
+    V_st2 = train[0][:, dim:, :, :][train_size:]
+    print(X_g[0:5])
+    X_train = [X_st1, X_st2, X_g]
+    X_val = [V_st1, V_st2, V_g]
 
-    # Splitting the dataset into training and validation sets
-    X = train[0]
-    train_size = int(0.8 * len(X))
-    X_train, X_val = X[:train_size], X[train_size:]
+    print('X sizes = ', X_train[0].shape, X_train[1].shape, X_train[2].shape)
+    print('V sizes = ', X_val[0].shape, X_val[1].shape, X_val[2].shape)
     Y = train[1]
     #take differences of two angles
     Y_train, Y_val = Y[:train_size,1]-Y[:train_size,0], Y[train_size:, 1]-Y[train_size:,0]
     
     #compile model
-    model.compile(optimizer='adam', loss=custom_loss_function, metrics=['accuracy'])
+    stereo_model.compile(optimizer='adam', loss=custom_loss_function, metrics=['accuracy'])
     
     #Training the Model
-    history = model.fit(x=X_train, y=Y_train,
+    history = stereo_model.fit(x=X_train, y=Y_train,
                         validation_data=(X_val, Y_val), epochs=epochs, batch_size=batch_size)
     
     #graph guesses at sep_angle
-    scatter_validation(model, num, batch_size, epochs, 'false')
-    scatter_validation2(cnn1, num, batch_size, epochs, 'false', dim, gamma)
+    scatter_validation(stereo_model, dim, num, max_angle, batch_size, epochs, 'false')
+    scatter_validation2(cnn1_model, dim, num, max_angle, batch_size, epochs, 'false', gamma_model)
 
 #supress scientific notation because its hard to read
 np.set_printoptions(suppress=True)
 
 #run the training
-num, batch_size, epochs = 1000, 25, 8
-run(num, batch_size, epochs)
+#dim is set to 32 for no apparent reason, but fails on 64
+dim, num, max_angle, batch_size, epochs = 32, 1000, 85, 25, 8
+run(dim, num, max_angle, batch_size, epochs)
 
