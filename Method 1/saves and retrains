@@ -1,0 +1,413 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Jan  8 16:04:30 2024
+
+@author: thejo
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.ndimage import gaussian_filter
+
+
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, Dropout, BatchNormalization
+from tensorflow.keras.layers import concatenate, Input
+from tensorflow.keras.initializers import Constant
+# from tensorflow.math import subtract
+import tensorflow.math as tfm
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+
+'''plan:
+    make 2d space array
+    define squares
+    construct large array of pairs of squares at 10 deg separation
+    train NN to identify angles between them
+    use new loss function
+    identify symmetry angle and use this to get [-80,10] or [10,100] results
+    
+    '''
+
+gamma_glob = None
+
+opt = keras.optimizers.Adam(learning_rate=0.005)
+
+class InfoOut(keras.callbacks.Callback):
+    def __init__(self):
+        super().__init__()
+
+    def on_epoch_end(self, epoch, logs=None):
+        print("\n InfoOut")
+        a = gamma_glob.predict([1.0])[0][0]
+        print(f'\ngamma = {a/3.1415*180:.1f} deg\n')
+        # print([w[0][0] for w in self.model.get_weights()])
+        # print()
+        # current = logs.get("loss")
+        # print(logs)
+        # print(current)
+        pass
+
+def grid2d(size):
+    '''creates values of coords up to image size, then makes grid of coords.
+    does this _number_ of times to make 3d grid of unrelated slices'''
+    xx, yy = np.meshgrid(np.linspace(0,size-1,size),
+                            np.linspace(0,size-1,size), sparse=True)
+    return xx, yy
+
+
+def preprocess(x, y, grid, dim):
+    '''recenters image using average mass position
+    doesnt work on y height ??'''
+    proc = np.where(grid>0.3, 1, 0)
+    dx = np.sum(x*proc)/np.sum(proc)-dim/2
+    dy = np.sum(y*proc)/np.sum(proc)-dim/2
+    im = np.roll(proc, -int(np.round(dy)), axis=0)
+    im = np.roll(im, -int(np.round(dx)), axis=1)
+    #this is just not moving the y coord for some reason
+    return im
+
+def inside_square(space, center, size, angle, dim):
+    '''takes consts and defines region where inside square, sets the grid values to 1, else 0'''
+    #l is the max square radius
+    nx = np.sin(angle)
+    ny = np.cos(angle) #normal vectors to edge, to determine if coord is inside or outside edge
+    im_sq = np.where((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny)<size/2)
+                     & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx)<size/2),
+                     1, 0)
+    #second condition uses tangent vectors to edge to find other two edges
+    #absolute allows both edges to be considered at once
+    #size/2 is the half side length
+    im_sq = np.add(im_sq, np.random.random([dim,dim])/5) #unprocessed image
+    im_sq = gaussian_filter(im_sq, sigma=0.1)
+    return preprocess(grid2d(dim)[0], grid2d(dim)[1], im_sq, dim)
+
+
+def data_train(dim, num, max_angle):
+    '''creates dataset of num dim*(2*dim) images
+    res determines number of intervals between 0 and 90 degrees
+    returns arrays of shapes, the stereoimages for each shape and the angle between them'''
+    a_s = np.zeros((num,3))
+    c_s = np.zeros((num,2))
+                      
+    '''these are randomised start values for the shapes'''
+    xcs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2).round(1)*0+dim/2
+    ycs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2).round(1)*0+dim/2
+    length = ((np.random.rand(num)+1)*dim/4).round(1)
+    length[:] = dim/2
+    #this 0, 90 defines the angular range of results
+    a1 = (np.random.uniform(0, max_angle, num))#in degrees
+    a2 = a1+10
+    c_s[np.arange(num), np.zeros(num,int)] = xcs
+    c_s[np.arange(num), np.zeros(num,int)+1] = ycs #centers
+    
+    a_s[np.arange(num), np.zeros(num,int)] = (a1/180*np.pi)#in radians
+    a_s[np.arange(num), np.zeros(num,int)+1] = (a2/180*np.pi)#in radians
+    # a_s[np.arange(num), np.zeros(num,int)+2] = np.absolute((a2*10-a1*10))#in degrees
+    a_s[np.arange(num), np.zeros(num,int)+2] = a1#in degrees
+    '''this is important, the validation for the training is the first angle.
+    that means we will be asking for only one angle as our final output'''
+    a = grid2d(dim)#grid for making pixels on
+    
+    grid1=[] #this is the list containing all image 1s of 2s
+    grid2=[] #stereopair images
+    angle=[]
+    for i in np.arange(num):
+        c1 = inside_square(a, c_s[i], length[i], a_s[i][0], dim)
+        c2 = inside_square(a, c_s[i], length[i], a_s[i][1], dim)
+        grid1.append(c1)
+        grid2.append(c2)
+        angle.append(a_s[i][2])
+    grids = np.hstack([np.array([grid1]).reshape(-1, dim, dim, 1)*1.0,
+               np.array([grid2]).reshape(-1, dim, dim, 1)*1.0])
+    return grids, a_s
+
+def CNN_model(dim):
+    '''takes an image input
+    outputs an angle for the image orientation'''
+    inputs = Input(shape=(dim, dim, 1))
+    x = Conv2D(64, kernel_size=(3, 3), activation='relu')(inputs)
+    x = MaxPooling2D(pool_size=(2, 2))(x)
+    x = Dropout(0.1)(x)
+    x = Conv2D(32, kernel_size=(3, 3), activation='relu')(x)
+    x = MaxPooling2D(pool_size=(2, 2))(x)
+    x = Dropout(0.1)(x)
+    x = Conv2D(16, kernel_size=(3, 3), activation='relu')(x)
+    x = MaxPooling2D(pool_size=(2, 2))(x)
+    x = Dropout(0.1)(x)
+    x = Flatten()(x)
+    outputs = Dense(1, activation='linear')(x)
+    model = Model(inputs=inputs, outputs=outputs)
+    model.summary()
+    return model
+
+def GAMMA_model():
+    '''takes no input, and gives a single output
+    aim is to guess the rotational symmetry of the shape'''
+    #problem here trying to make empty input
+    inputs_ones = Input(shape=(1,))
+    #start the gamma on 90 deg before training
+    initializer = Constant(np.deg2rad(90.))
+    #use a single dense layer
+    out_gamma = Dense(1, activation='linear', use_bias=False, kernel_initializer=initializer, name='gamma')(inputs_ones)
+    gamma_model = Model(inputs=inputs_ones, outputs=out_gamma)
+    gamma_model.compile(optimizer='adam', loss='mse')
+    gamma_model.summary()
+    return gamma_model
+
+def STEREO_model(dim,  num, batch_size, epochs):
+    '''takes a double width dual image, splits and determines the angle of each
+    then outputs a single angle
+    in theory: it takes correct angles from both shapes and only returns shape two,
+    this means you can give it a 0&unknown angle pair to get the unknowns,
+    it is accurate on both as the same CNN is trained on each of images 1&2'''
+  
+    
+    # cnn1 = keras.models.load_model(f'cnn1_fnct_mdl_num{num}_bs{batch_size}_epochs{epochs}.keras')
+    '''first of above trains without pretrained cnn, second uses pretrained(to recognise angles)'''
+   
+    cnn_model = CNN_model(dim)
+    gamma_model = GAMMA_model()
+    
+    
+    inputs_st1 = Input(shape=(dim, dim, 1))
+    inputs_st2 = Input(shape=(dim, dim, 1))
+    inputs_g = Input(shape=(1,))
+    
+    c1 = cnn_model(inputs_st1)
+    c2 = cnn_model(inputs_st2)
+    sub = tfm.subtract(c2, c1)
+    initializer = Constant(1.0)
+    sub_output = Dense(1, activation='linear', use_bias=False, trainable=False, kernel_initializer=initializer , name="sub")(sub)
+    stereo_sub_model = Model(inputs=[inputs_st1, inputs_st2, inputs_g], outputs=sub_output)
+    
+    cs = tf.concat([c1,c2],1)
+    x = tfm.argmin(cs, output_type = tf.dtypes.int32, axis = 1)
+    x = tf.reshape(x, [-1,1])
+    g = gamma_model(inputs_g)
+    y = tfm.multiply(g, tf.cast(x, dtype = tf.dtypes.float32))
+    add = tfm.add(sub, y)
+    
+    # sub_div = tf.math.floordiv(sub, g)
+    # add = tf.math.minimum(sub_div, 1.0)
+    # sub_mod = tf.math.subtract(sub, tf.math.multiply(add, g))
+    initializer = Constant(1.0)
+    output = Dense(1, activation='linear', use_bias=False, trainable=False, kernel_initializer=initializer , name="mod")(add)
+    
+    stereo_model = Model(inputs=[inputs_st1, inputs_st2, inputs_g], outputs=output)
+    stereo_model.summary()
+    
+    return stereo_model, stereo_sub_model, cnn_model, gamma_model
+
+def scatter_validation(model1, dim, num, max_angle, batch_size, epochs, trial):
+    '''take range of inputs and produce graph of them vs predicitons from a model
+    y-axis: values of shape 1's angle
+    x-axis: predicted angular separation
+    trial is to show whether the model is expected to be trained'''
+    
+    #generate test data
+    test = data_train(dim, round(num), max_angle)
+    X_g = np.ones((round(num), 1))
+    X_st1 = test[0][:, :dim, :, :]
+    X_st2 = test[0][:, dim:, :, :]
+    X_test = [X_st1, X_st2, X_g]
+    y_prediction = np.reshape(model1.predict(X_test), -1)
+    
+    #scatter the results
+    plt.scatter(test[1][:,2], np.rad2deg(y_prediction))
+    # plt.ylim(0)
+    plt.grid()
+    plt.xlabel('Actual Values of shape 1')
+    plt.ylabel('Separation prediction')
+    # plt.text(0.12, 2,
+    #          f'trial = {trial}\nbatch_size = {batch_size} \nepochs = {epochs}',
+    #          fontsize=14,
+    #     verticalalignment='top')
+    # plt.savefig(f'fnct_mdl_SCATTER_num{num}_bs{batch_size}_epochs{epochs}')
+    plt.show()
+
+def scatter_validation2(CNN, dim, num, max_angle, batch_size, epochs, trial, GAMMA_MyGamma):
+    '''take range of inputs and produce graph of them vs predicitons from a model
+    y-axis: prediction of shape 1 angle (blue), shape 2 (orange) and gamma (green)
+    x-axis: actual shape 1 input ngle
+    trial is to show whether the model is expected to be trained'''
+    fig, (ax1, ax2) = plt.subplots(2,1, layout='constrained', sharex=True)
+    fig.suptitle(f'Vertically stacked subplots, max angle = {max_angle}')
+    #generate test data
+    test = data_train(dim, round(num), max_angle)
+    X_g = np.ones((round(num), 1))
+    X_st1 = test[0][:, :dim, :, :]
+    X_st2 = test[0][:, dim:, :, :]
+    X_test = [X_st1, X_st2, X_g]
+    #Predict angular separation
+    angle_pred = np.reshape(CNN.predict(X_st1), -1)
+    angle2_pred = np.reshape(CNN.predict(X_st2), -1)
+    gamma_pred = np.reshape(GAMMA_MyGamma.predict(X_g), -1)
+    #scatter the results
+    ax2.scatter(test[1][:,2], np.rad2deg(angle_pred), c='blue')
+    ax2.scatter(test[1][:,2], np.rad2deg(angle2_pred), c='orange')
+    # ax2.scatter(test[1][:,2], gamma_pred, c='green')
+    ax1.scatter(test[1][:,2], np.rad2deg(gamma_pred), c='red')
+    ax2.grid()
+    ax1.grid()
+    ax2.set_xlabel('Actual Values of shapes')
+    ax2.set_ylabel('Angle prediction of \nShapes 1&2')
+    ax1.set_ylabel('Angle prediction of \ngamma')
+    plt.savefig(f'max_angle{max_angle}_dim{dim}_num{num}_bs{batch_size}_epochs{epochs}')
+    plt.show()
+    return np.average(np.rad2deg(gamma_pred))
+
+def custom_loss_function(y_true, y_pred):
+    dif = y_true - y_pred
+    #25 corresponds to 5^2 degree difference, any angle_dif>5
+    #this 25 value can be tuned for optimal effect
+    tensor = tf.constant(25, shape = y_true.shape, dtype = tf.float32)
+    squared_dif = tf.square((y_true - y_pred))#[tfm.abs(dif)<1])
+    min_dif = tfm.minimum(tensor, squared_dif)
+    return tf.reduce_mean(min_dif, axis=-1)
+
+
+
+
+def custom_loss_function_sub(y_true, y_pred):
+    squared_difference = tf.square(y_true - y_pred)
+    sh = squared_difference.get_shape()[0]
+    print(squared_difference)
+    print(squared_difference.shape)
+    sq = tf.reshape(squared_difference, [sh])
+    print(sq.shape)
+    print(sq)
+    a = tfm.reduce_sum(sq) - tfm.reduce_sum(tfm.top_k(sq, sh//6+1).values)
+    # a = tfm.reduce_sum(squared_difference)
+    return a
+
+dim, num, max_angle, batch_size, epochs = 64, 1024, 360, 64, 10
+use_save = [False, -1]
+
+if use_save[0] == False:
+    #Aquire model without training
+    stereo_model, stereo_sub_model, cnn1_model, gamma_model = STEREO_model(dim, num, batch_size, epochs)
+elif use_save[0] == True:
+    #use a previously saved gamma model
+    stereo_model, stereo_sub_model, cnn1_model, gamma_model = STEREO_model(dim, num, batch_size, epochs)
+    gamma_model = keras.models.load_model(f'GAMMA_model = {use_save[1]}.keras')
+
+gamma_glob = gamma_model
+#graph something
+'''???'''
+# scatter_validation(stereo_model, dim, num, max_angle, batch_size, epochs, 'true')
+
+#construct data
+train = data_train(dim, num, max_angle)
+train_size = int(0.8 * num)
+# X_g, V_g = np.ones((num, 1))[:train_size], np.ones((num, 1))[train_size:]
+X_g = np.ones((num, 1))
+X_st1 = train[0][:, :dim, :, :]  # [:train_size]
+# V_st1 = train[0][:, dim:, :, :][train_size:]
+X_st2 = train[0][:, dim:, :, :]  #[:train_size]
+# V_st2 = train[0][:, dim:, :, :]  #[train_size:]
+X_train = [X_st1, X_st2, X_g]
+# X_val = [V_st1, V_st2, V_g]
+
+Y = train[1]
+#take differences of two angles
+# Y_train, Y_val = Y[:train_size,1]-Y[:train_size,0], Y[train_size:, 1]-Y[train_size:,0]
+Y_train = Y[:,1]-Y[:,0]
+#compile model
+gamma_model.trainable=False
+stereo_model.compile(optimizer=opt, loss=custom_loss_function_sub)
+stereo_sub_model.compile(optimizer=opt, loss=custom_loss_function_sub)
+
+#Training the Model
+history = stereo_sub_model.fit(x=X_train, y=Y_train,
+                 epochs=epochs, batch_size=batch_size,
+                 callbacks=[InfoOut()])
+
+plt.plot(history.history["loss"])
+plt.yscale("log")
+plt.show()
+
+# gout_layer = tf.keras.models.Model(inputs=stereo_model.input, outputs=stereo_model.get_layer('mod').output)
+
+
+#graph guesses at sep_angle
+scatter_validation(stereo_sub_model, dim, num, max_angle, batch_size, epochs, 'false')
+scatter_validation(stereo_model, dim, num, max_angle, batch_size, epochs, 'false')
+
+g = scatter_validation2(cnn1_model, dim, num, max_angle, batch_size, epochs, 'false', gamma_model)
+#save gamma model for retraining
+use_save[1] = round(g,1)
+gamma_model.save(f'GAMMA_model = {use_save[1]}.keras')
+
+c = gamma_model.get_layer('gamma').get_weights()
+
+g_array = np.linspace(40, 150, 40)
+loss_list = []
+
+for g in g_array:
+    c[0][0][0] = np.deg2rad(g)
+    gamma_model.get_layer('gamma').set_weights(c)
+    y_prediction = stereo_model.predict(X_train)
+    loss = np.mean((y_prediction-Y_train)**2)
+    loss_list.append(loss)
+ 
+plt.plot(g_array, loss_list, '.')
+plt.yscale("log")
+plt.show()
+
+c[0][0][0] = np.deg2rad(g_array[np.argmin(loss_list)])
+gamma_model.get_layer('gamma').set_weights(c)
+
+scatter_validation(stereo_model, dim, num, max_angle, batch_size, epochs, 'false')
+assert False
+
+gamma_model.trainable=False
+#Training the Model
+history = stereo_model.fit(x=X_train, y=Y_train,
+                 epochs=epochs, batch_size=batch_size,
+                 callbacks=[InfoOut()])
+
+plt.plot(history.history["loss"])
+plt.yscale("log")
+plt.show()
+
+scatter_validation(stereo_sub_model, dim, num, max_angle, batch_size, epochs, 'false')
+scatter_validation(stereo_model, dim, num, max_angle, batch_size, epochs, 'false')
+
+g = scatter_validation2(cnn1_model, dim, num, max_angle, batch_size, epochs, 'false', gamma_model)
+
+
+dim, num, max_angle, batch_size, epochs = 64, 1024, 360, 64, 10
+
+#construct data
+train = data_train(dim, num, max_angle)
+train_size = int(0.8 * num)
+# X_g, V_g = np.ones((num, 1))[:train_size], np.ones((num, 1))[train_size:]
+X_g = np.ones((num, 1))
+X_st1 = train[0][:, :dim, :, :]  # [:train_size]
+# V_st1 = train[0][:, dim:, :, :][train_size:]
+X_st2 = train[0][:, dim:, :, :]  #[:train_size]
+# V_st2 = train[0][:, dim:, :, :]  #[train_size:]
+X_train = [X_st1, X_st2, X_g]
+# X_val = [V_st1, V_st2, V_g]
+
+Y = train[1]
+#take differences of two angles
+# Y_train, Y_val = Y[:train_size,1]-Y[:train_size,0], Y[train_size:, 1]-Y[train_size:,0]
+Y_train = Y[:,1]-Y[:,0]
+
+# #supress scientific notation because its hard to read
+# np.set_printoptions(suppress=True)
+
+# gamma_model.trainable=True
+# cnn1_model.trainable=False
+# w=stereo_model.get_weights()
+# stereo_model.compile(optimizer=opt, loss="mse")
+# stereo_model.set_weights(w)
+# history = stereo_model.fit(x=X_train, y=Y_train,
+#                  epochs=epochs, batch_size=batch_size,
+#                  callbacks=[InfoOut()])
+
+# g = scatter_validation2(cnn1_model, dim, num, max_angle, batch_size, epochs, 'false', gamma_model)
