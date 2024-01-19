@@ -1,0 +1,174 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.ndimage import gaussian_filter
+
+from tensorflow import keras
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Conv2DTranspose, Conv2D
+from tensorflow.keras.layers import Input, Reshape, Flatten
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+
+'''
+goal:
+    to input an angle and recieve an image of a squae at that angle,
+    with 0 being alligned with the axes
+    '''
+
+
+def grid2d(size):
+    '''creates values of coords up to image size, then makes grid of coords.
+    does this _number_ of times to make 3d grid of unrelated slices'''
+    xx, yy = np.meshgrid(np.linspace(0,size-1,size),
+                            np.linspace(0,size-1,size), sparse=True)
+    return xx, yy
+
+def preprocess(x, y, grid, dim):
+    '''recenters image using average mass position
+    doesnt work on y height ??'''
+    proc = np.where(grid>0.3, 1, 0)
+    # print(proc, '\n')
+    # plt.matshow(proc)
+    dx = np.sum(x*proc)/np.sum(proc)-dim/2
+    dy = np.sum(y*proc)/np.sum(proc)-dim/2
+    # print(dx,dy)
+    im = np.roll(proc, -int(np.round(dy)), axis=0)
+    im = np.roll(im, -int(np.round(dx)), axis=1)
+    #this is just not moving the y coord for some reason
+    # print(im)
+    # plt.matshow(im)
+    return im
+
+def inside_square(space, center, size, angle, dim):
+    '''takes consts and defines region where inside square, sets the grid values to 1, else 0'''
+    #l is the max square radius
+    nx = np.sin(angle)
+    ny = np.cos(angle) #normal vectors to edge, to determine if coord is inside or outside edge
+    im_sq = np.where((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny)<size/2)
+                     & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx)<size/2),
+                     1, 0)
+    #second condition uses tangent vectors to edge to find other two edges
+    #absolute allows both edges to be considered at once
+    #size/2 is the half side length
+    im_sq = np.add(im_sq, np.random.random([dim,dim])/5) #unprocessed image
+    im_sq = gaussian_filter(im_sq, sigma=0.1)
+    return preprocess(grid2d(dim)[0], grid2d(dim)[1], im_sq, dim)
+
+
+def data_train(dim, num):
+    '''creates dataset of num dim*dim images
+    returns arrays of shapes and the angle between them'''
+    a_s = np.zeros((num,3))
+    c_s = np.zeros((num,2))
+                      
+    '''these are randomised start values for the shapes'''
+    xcs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2).round(1)
+    ycs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2).round(1)
+    length = ((np.random.rand(num)+1)*dim/4).round(1)
+    a1 = (np.random.randint(0,9,num)).round(0)#in degrees
+    a2 = (np.random.randint(0,9,num)).round(0)#in degrees
+
+    c_s[np.arange(num), np.zeros(num,int)] = xcs
+    c_s[np.arange(num), np.zeros(num,int)+1] = ycs #centers
+    
+    a_s[np.arange(num), np.zeros(num,int)] = (a1/18*np.pi).round(2)#in radians
+    a_s[np.arange(num), np.zeros(num,int)+1] = (a2/18*np.pi).round(2)#in radians
+    # a_s[np.arange(num), np.zeros(num,int)+2] = np.absolute((a2*10-a1*10))#in degrees
+    a_s[np.arange(num), np.zeros(num,int)+2] = a1#in degrees
+    # print(a_s[0:5])
+    a = grid2d(dim)#grid for making pixels on
+    
+    grid1=[] #this is the list containing all image 1s of 2s
+    grid2=[] #stereopair images
+    angle=[]
+    for i in np.arange(num):
+        c = inside_square(a, c_s[i], length[i], a_s[i][0], dim)
+        grid1.append(c)
+        angle.append(a_s[i][2])
+
+    return grid1, np.array(angle)
+
+
+def image_gen():
+    latent_inputs = Input(shape=(1))
+    x = Dense(576, activation="relu")(latent_inputs)
+    x = Dense(1024, activation="relu")(x)
+    # form 8 by 8 feature map
+    x = Reshape((8, 8, 16))(x)
+    # form 16 by 16 feature map
+    x = Conv2DTranspose(16, 3, activation="relu", strides=2, padding="same")(x)
+    # form 32 by 32 feature map
+    x = Conv2DTranspose(32, 3, activation="relu", strides=2, padding="same")(x)
+    # form 64 by 64 feature map
+    x = Conv2DTranspose(64, 3, activation="relu", strides=2, padding="same")(x)
+    # form the sigmoid output - single image
+    decoder_outputs = Conv2DTranspose(1, 3, activation="sigmoid", padding="same")(x)
+    decoder = Model(latent_inputs, decoder_outputs, name="decoder")
+    decoder.summary()
+    return decoder
+
+
+
+def train_model(dim=64, num=1000, loss1='mse'):
+    train = data_train(dim, num)
+    
+    X = np.array([train[0]]).reshape(-1, dim, dim, 1)
+    Y = train[1]
+    train_size = int(0.8 * len(X))
+    X_train, X_val = X[:train_size], X[train_size:]
+    Y_train, Y_val = Y[:train_size], Y[train_size:]
+    
+    # Compiling the model
+    model = image_gen()
+    model.compile(optimizer='adam', loss=loss1, metrics=['accuracy'])
+    
+    # 3. Training the Model
+    history = model.fit(Y_train, X_train, validation_data=(Y_val, X_val),
+                        epochs=10, batch_size=16)
+    
+    return history, model
+
+
+def graph2d(history, title1):
+    # Optional: Visualize training progress
+    plt.plot(history.history['accuracy'], label='accuracy')
+    plt.plot(history.history['val_accuracy'], label='val_accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.ylim([0, 1])
+    plt.title(title1)
+    plt.legend(loc='lower right')
+    plt.show()
+    pass
+
+
+
+def angle_gen(dim):
+    encoder_inputs = Input(shape=(64, 64, 1))
+    x = Conv2D(64, 3, activation="relu", strides=2, padding="same")(encoder_inputs)
+    x = Conv2D(32, 3, activation="relu", strides=2, padding="same")(x)
+    x = Conv2D(16, 3, activation="relu", strides=2, padding="same")(x)
+    x = Flatten()(x)
+    x = Dense(576, activation="relu")(x)
+    outputs = Dense(1, name="encoder")(x)
+    encoder = Model(encoder_inputs, outputs, name="encoder2")
+    encoder.summary()
+    return encoder
+
+
+from sklearn.metrics import confusion_matrix
+import seaborn as sn
+import pandas as pd
+
+
+
+# trained_Xentropy = train_model()
+trained_mse = train_model(loss1='mse')
+# graph2d(trained_Xentropy[0], 'categorical cross entropy')
+graph2d(trained_mse[0], 'mse')
+'''could save the graph of training too, if useful'''
+# trained_Xentropy[1].save('img_gen_Xentropy.keras')  # The file needs to end with the .keras extension
+# trained_mse[1].save('img_gen_mse.keras')  # The file needs to end with the .keras extension
+# model_Xentropy = keras.models.load_model('img_gen_Xentropy.keras')
+# model_mse = keras.models.load_model('img_gen_mse.keras')
+
