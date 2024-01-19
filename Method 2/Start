@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
 
 from tensorflow import keras
+import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Flatten, MaxPooling2D, Dropout, BatchNormalization
 from tensorflow.keras.layers import Dense, Conv2DTranspose, Conv2D
@@ -17,7 +18,7 @@ goal:
     with 0 being alligned with the axes
     '''
 
-opt = keras.optimizers.Adam(learning_rate=0.01)
+opt = keras.optimizers.Adam(learning_rate=0.02)
 
 def grid2d(size):
     '''creates values of coords up to image size, then makes grid of coords.
@@ -97,11 +98,11 @@ def data_train(dim, num, max_angle):
                np.array([grid2]).reshape(-1, dim, dim, 1)*1.0])
     return grids, a_s
 
-def CNN_model(dim):
+def IMG_model(dim):
     '''takes an image input
     outputs an angle for the image orientation'''
-    inputs = Input(shape=(dim, dim, 1))
-    x = Conv2D(16, kernel_size=(3, 3), activation='relu')(inputs)
+    input1 = Input(shape=(dim, dim, 1))
+    x = Conv2D(16, kernel_size=(3, 3), activation='relu')(input1)
     x = MaxPooling2D(pool_size=(2, 2))(x)
     x = Dropout(0.1)(x)
     x = Conv2D(32, kernel_size=(3, 3), activation='relu')(x)
@@ -112,38 +113,70 @@ def CNN_model(dim):
     x = Dropout(0.1)(x)
     x = Flatten()(x)
     x = Dense(16, activation='relu')(x)
-    outputs = Dense(1, activation='linear')(x)
-    model = Model(inputs=inputs, outputs=outputs)
-    model.summary()
-    return model
-
-def IMG_model():
-    input1 = Input(shape=(1))
+    output1 = Dense(1, activation='linear', name="Angle_1")(x)
+    # model = Model(inputs=input1, outputs=output1)
+    # model.summary()
     input2 = Input(shape=(1))
-    angle = tfm.add(input1, input2)
+    angle = tfm.add(output1, input2)
+    angle = Dense(1, activation=None, use_bias=False, trainable=False,
+              kernel_initializer=keras.initializers.Constant(value=1.0), name="Angle_2")(angle)
     x = Dense(64, activation="relu")(angle)
-    # form 8 by 8 feature map
+    #form 8 by 8 feature map
     x = Reshape((8, 8, 1))(x)
-    # form 16 by 16 feature map
+    #form 16 by 16 feature map
     x = Conv2DTranspose(16, 3, activation="relu", strides=2, padding="same")(x)
     x = Dropout(0.1)(x)
-    # form 32 by 32 feature map
+    #form 32 by 32 feature map
     x = Conv2DTranspose(32, 3, activation="relu", strides=2, padding="same")(x)
     x = Dropout(0.1)(x)
-    # form 64 by 64 feature map
+    #form 64 by 64 feature map
     x = Conv2DTranspose(64, 3, activation="relu", strides=2, padding="same")(x)
     x = Dropout(0.1)(x)
-    # form the sigmoid output - single image
-    outputs = Conv2DTranspose(1, 3, activation="sigmoid", padding="same")(x)
-    decoder = Model(inputs=[input1, input2], outputs=outputs, name="decoder")
-    decoder.summary()
-    return decoder
+    #form the sigmoid output - single image
+    output2 = Conv2DTranspose(1, 3, activation="sigmoid", padding="same")(x)
+    img_model = Model(inputs=[input1, input2], outputs=[output1, output2], name="decoder")
+    img_model.summary()
+    return img_model, output1, output2
 
+def custom_loss_function(y_true, y_pred):
+    a = tf.square(y_true[:] - y_pred[:, 1])
+    a = tfm.reduce_mean(a)
+    return a
 
-dim, num, max_angle, batch_size, epochs = 64, 1024, 360, 64, 30
+dim, num, max_angle, batch_size, epochs = 64, 1024, 360, 64, 2
 train = data_train(dim, num, 90)
 
-X = np.array([train[0]]).reshape(-1, dim, dim, 1)
-Y = train[1]
+X_1 = train[0][:, :dim, :, :]
+Y_1 = train[0][:, dim:, :, :]
+X_2 = train[1][:,1] - train[1][:,0]
+
+img_model, output1, output2 = IMG_model(dim)
+img_model.compile(optimizer=opt, loss='mse')
+
+# plt.plot(history.history["loss"])
+# plt.yscale("log")
+# plt.show()
+
+
+for i in range(0,10):
+    epochs = 1
+    history = img_model.fit(x=[X_1, X_2], y=Y_1, epochs=epochs, batch_size=batch_size)
+    a = img_model.predict([X_1, X_2])
+    b = Y_1
+    c = np.hstack([a[1],b])
+    plt.imshow(c[0][:,:,0], cmap='gray')
+    plt.title(f'epochs = {i}')
+    plt.show()
+# plt.imshow(c[10][:,:,0], cmap='gray')
+# plt.show()
+# plt.imshow(c[100][:,:,0], cmap='gray')
+# plt.show()
+
+
+
+
+
+
+
 
 
