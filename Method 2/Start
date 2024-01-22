@@ -18,8 +18,6 @@ goal:
     with 0 being alligned with the axes
     '''
 
-opt = keras.optimizers.Adam(learning_rate=0.02)
-
 def grid2d(size):
     '''creates values of coords up to image size, then makes grid of coords.
     does this _number_ of times to make 3d grid of unrelated slices'''
@@ -143,40 +141,32 @@ def custom_loss_function(y_true, y_pred):
     a = tfm.reduce_mean(a)
     return a
 
-dim, num, max_angle, batch_size, epochs = 64, 1024, 360, 64, 2
-train = data_train(dim, num, 90)
+
+dim, num, max_angle, batch_size, epochs = 64, 1024, 90, 64, 5
+opt = keras.optimizers.Adam(learning_rate=0.02)
+train = data_train(dim, num, max_angle)
 
 X_1 = train[0][:, :dim, :, :]
 Y_1 = train[0][:, dim:, :, :]
 X_2 = train[1][:,1] - train[1][:,0]
+# X_2 = np.zeros(num)
 
 img_model, output1, output2 = IMG_model(dim)
 img_model.compile(optimizer=opt, loss='mse')
 
+
+
+history = img_model.fit(x=[X_1, X_2], y=Y_1, epochs=epochs, batch_size=batch_size)
 # plt.plot(history.history["loss"])
 # plt.yscale("log")
 # plt.show()
 
-
-for i in range(0,10):
-    epochs = 1
-    history = img_model.fit(x=[X_1, X_2], y=Y_1, epochs=epochs, batch_size=batch_size)
-    a = img_model.predict([X_1, X_2])
-    b = Y_1
-    c = np.hstack([a[1],b])
-    plt.imshow(c[0][:,:,0], cmap='gray')
-    plt.title(f'epochs = {i}')
+a = img_model.predict([X_1, X_2])
+b = Y_1
+c = np.hstack([a[1],b])
+print(c.shape)
+for i in range(0,5):
+    print(i)
+    plt.imshow(c[i][:,:,0], cmap='gray')
+    plt.title(f'img{i}')
     plt.show()
-# plt.imshow(c[10][:,:,0], cmap='gray')
-# plt.show()
-# plt.imshow(c[100][:,:,0], cmap='gray')
-# plt.show()
-
-
-
-
-
-
-
-
-
