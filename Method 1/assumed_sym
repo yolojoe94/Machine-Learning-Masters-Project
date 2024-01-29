@@ -71,7 +71,7 @@ def inside_square(space, center, size, angle, dim):
     return preprocess(grid2d(dim)[0], grid2d(dim)[1], im_sq, dim)
 
 
-def data_train(dim, num, max_angle):
+def data(dim, num, max_angle):
     '''creates dataset of num dim*(2*dim) images
     res determines number of intervals between 0 and 90 degrees
     returns arrays of shapes, the stereoimages for each shape and the angle between them'''
@@ -180,7 +180,7 @@ def scatter_validation(model1, dim, num, max_angle, batch_size, epochs, trial):
     trial is to show whether the model is expected to be trained'''
     
     #generate test data
-    test = data_train(dim, round(num), max_angle)
+    test = data(dim, round(num), max_angle)
     X_st1 = test[0][:, :dim, :, :]
     X_st2 = test[0][:, dim:, :, :]
     X_test = [X_st1, X_st2]
@@ -211,8 +211,6 @@ def scatter_validation(model1, dim, num, max_angle, batch_size, epochs, trial):
     plt.ylabel('Angle prediction of \nShapes 1&2')
     plt.show()
 
-
-
 def custom_loss_function(y_true, y_pred):
     dif = y_true - y_pred
     #25 corresponds to 5^2 degree difference, any angle_dif>5
@@ -222,23 +220,19 @@ def custom_loss_function(y_true, y_pred):
     min_dif = tfm.minimum(tensor, squared_dif)
     return tf.reduce_mean(min_dif, axis=-1)
 
-
-
-
-def custom_loss_function_sub(y_true, y_pred):
-    a = tf.square(y_true[:, 0] - y_pred[:, 0])
-    return a
-
-
 dim, num, max_angle, batch_size, epochs = 64, 1024, 360, 64, 30
 
 
 stereo_model, cnn1_model = STEREO_model(dim, num, batch_size, epochs)
 
 sym = 4
+'''programmatically find the right integer value
+start 1d projections with a chiral (pro-chiral in literature) shape like "L"
+this stops the extra symmetry being a nuisance 
+then try with non-chiral shapes that have a line of symmetry but no rotational symmetries'''
 
 #construct data
-train = data_train(dim, num, max_angle)
+train = data(dim, num, max_angle)
 X_g = np.ones((num, 1))
 X_st1 = train[0][:, :dim, :, :]  # [:train_size]
 X_st2 = train[0][:, dim:, :, :]  #[:train_size]
@@ -260,8 +254,6 @@ plt.show()
 #take differences of two angles
 Y_train = [(Y[:,1]-Y[:,0])*sym, np.ones(num), np.ones(num)] 
 
-#compile model
-# stereo_model.compile(optimizer=opt, loss=custom_loss_function_sub)
 losses = {"stereo_out": "mse"}
 lossWeights = {"stereo_out": 1.0}
 stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
@@ -276,14 +268,14 @@ plt.show()
 
 plt.plot(a[2].flatten(), '.')
 plt.show()
-assert False
+# assert False
 
 #Training stero_model
-history = stereo_model.fit(x=X_train, y=Y_train, epochs=epochs, batch_size=batch_size)
+# history = stereo_model.fit(x=X_train, y=Y_train, epochs=epochs, batch_size=batch_size)
 
-plt.plot(history.history["loss"])
-plt.yscale("log")
-plt.show()
+# plt.plot(history.history["loss"])
+# plt.yscale("log")
+# plt.show()
 
 #check if stereo_model is guessing well
 a = stereo_model.predict(X_train)
@@ -299,4 +291,3 @@ plt.show()
 
 #graph guesses at sep_angle
 scatter_validation(stereo_model, dim, num, max_angle, batch_size, epochs, 'false')
-
