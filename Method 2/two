@@ -10,7 +10,7 @@ from tensorflow.keras.layers import Dense, Conv2D, Reshape, Conv2DTranspose
 from tensorflow.keras.layers import Input
 import tensorflow.math as tfm
 import os
-os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 '''
 goal:
@@ -18,17 +18,19 @@ goal:
     with 0 being alligned with the axes
     '''
 
+
 def grid2d(size):
     '''creates values of coords up to image size, then makes grid of coords.
     does this _number_ of times to make 3d grid of unrelated slices'''
-    xx, yy = np.meshgrid(np.linspace(0,size-1,size),
-                            np.linspace(0,size-1,size), sparse=True)
+    xx, yy = np.meshgrid(np.linspace(0, size-1, size),
+                         np.linspace(0, size-1, size), sparse=True)
     return xx, yy
+
 
 def preprocess(x, y, grid, dim):
     '''recenters image using average mass position
     doesnt work on y height ??'''
-    proc = np.where(grid>0.3, 1, 0)
+    proc = np.where(grid > 0.3, 1, 0)
     # print(proc, '\n')
     # plt.matshow(proc)
     dx = np.sum(x*proc)/np.sum(proc)-dim/2
@@ -36,23 +38,25 @@ def preprocess(x, y, grid, dim):
     # print(dx,dy)
     im = np.roll(proc, -int(np.round(dy)), axis=0)
     im = np.roll(im, -int(np.round(dx)), axis=1)
-    #this is just not moving the y coord for some reason
+    # this is just not moving the y coord for some reason
     # print(im)
     # plt.matshow(im)
     return im
 
+
 def inside_square(space, center, size, angle, dim):
     '''takes consts and defines region where inside square, sets the grid values to 1, else 0'''
-    #l is the max square radius
+    # l is the max square radius
     nx = np.sin(angle)
-    ny = np.cos(angle) #normal vectors to edge, to determine if coord is inside or outside edge
-    im_sq = np.where((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny)<size/2)
-                     & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx)<size/2),
+    # normal vectors to edge, to determine if coord is inside or outside edge
+    ny = np.cos(angle)
+    im_sq = np.where((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny) < size/2)
+                     & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx) < size/2),
                      1, 0)
-    #second condition uses tangent vectors to edge to find other two edges
-    #absolute allows both edges to be considered at once
-    #size/2 is the half side length
-    im_sq = np.add(im_sq, np.random.random([dim,dim])/5) #unprocessed image
+    # second condition uses tangent vectors to edge to find other two edges
+    # absolute allows both edges to be considered at once
+    # size/2 is the half side length
+    im_sq = np.add(im_sq, np.random.random([dim, dim])/5)  # unprocessed image
     im_sq = gaussian_filter(im_sq, sigma=0.1)
     return preprocess(grid2d(dim)[0], grid2d(dim)[1], im_sq, dim)
 
@@ -61,31 +65,31 @@ def data(dim, num, max_angle):
     '''creates dataset of num dim*(2*dim) images
     max_angle in degrees
     returns arrays of shapes, the stereoimages for each shape and the angle between them'''
-    a_s = np.zeros((num,3))
-    c_s = np.zeros((num,2))
-                      
+    a_s = np.zeros((num, 3))
+    c_s = np.zeros((num, 2))
+
     '''these are randomised start values for the shapes'''
     xcs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2).round(1)*0+dim/2
     ycs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2).round(1)*0+dim/2
     length = ((np.random.rand(num)+1)*dim/4).round(1)
     length[:] = dim/2
-    #this 0, 90 defines the angular range of results
-    a1 = (np.random.uniform(0, max_angle, num))#in degrees
+    # this 0, 90 defines the angular range of results
+    a1 = (np.random.uniform(0, max_angle, num))  # in degrees
     a2 = a1+10
-    c_s[np.arange(num), np.zeros(num,int)] = xcs
-    c_s[np.arange(num), np.zeros(num,int)+1] = ycs #centers
-    
-    a_s[np.arange(num), np.zeros(num,int)] = (a1/180*np.pi)#in radians
-    a_s[np.arange(num), np.zeros(num,int)+1] = (a2/180*np.pi)#in radians
+    c_s[np.arange(num), np.zeros(num, int)] = xcs
+    c_s[np.arange(num), np.zeros(num, int)+1] = ycs  # centers
+
+    a_s[np.arange(num), np.zeros(num, int)] = (a1/180*np.pi)  # in radians
+    a_s[np.arange(num), np.zeros(num, int)+1] = (a2/180*np.pi)  # in radians
     # a_s[np.arange(num), np.zeros(num,int)+2] = np.absolute((a2*10-a1*10))#in degrees
-    a_s[np.arange(num), np.zeros(num,int)+2] = a1#in degrees
+    a_s[np.arange(num), np.zeros(num, int)+2] = a1  # in degrees
     '''this is important, the validation for the training is the first angle.
     that means we will be asking for only one angle as our final output'''
-    a = grid2d(dim)#grid for making pixels on
-    
-    grid1=[] #this is the list containing all image 1s of 2s
-    grid2=[] #stereopair images
-    angle=[]
+    a = grid2d(dim)  # grid for making pixels on
+
+    grid1 = []  # this is the list containing all image 1s of 2s
+    grid2 = []  # stereopair images
+    angle = []
     for i in np.arange(num):
         c1 = inside_square(a, c_s[i], length[i], a_s[i][0], dim)
         c2 = inside_square(a, c_s[i], length[i], a_s[i][1], dim)
@@ -93,8 +97,9 @@ def data(dim, num, max_angle):
         grid2.append(c2)
         angle.append(a_s[i][2])
     grids = np.hstack([np.array([grid1]).reshape(-1, dim, dim, 1)*1.0,
-               np.array([grid2]).reshape(-1, dim, dim, 1)*1.0])
+                       np.array([grid2]).reshape(-1, dim, dim, 1)*1.0])
     return grids, a_s
+
 
 def CNN_model(dim):
     '''input: image
@@ -112,14 +117,15 @@ def CNN_model(dim):
     x = Flatten()(x)
     x = Dense(16, activation='relu')(x)
     output_1 = Dense(1, activation='linear', name="Angle_1")(x)
-    cnn_model = Model(inputs=input_1, outputs=output_1)
+    cnn_model = Model(inputs=input_1, outputs=output_1, name='encoder')
     cnn_model.summary()
     return cnn_model
 
-def IMG_model_1(dim):
+
+def IMG_model(dim):
     '''input: angle of image orientation
     output: image at input angle'''
-    input_2 = Input(shape=(1))
+    input_2 = Input(shape=(1))  # angle of shape    
     x = Dense(8, activation="relu")(input_2)
     x = Dense(64, activation="relu")(x)
     x = Dense(dim*dim, activation="relu")(x)
@@ -128,71 +134,65 @@ def IMG_model_1(dim):
     img_model.summary()
     return img_model
 
-def IMG_model_2(dim):
-    '''input: angle of image orientation
-    output: image at input angle'''
-    input_2 = Input(shape=(1))
-    x = Dense(64, activation="relu")(input_2)
-    #form 8 by 8 feature map
-    x = Reshape((8, 8, 1))(x)
-    #form 16 by 16 feature map
-    x = Conv2DTranspose(16, 3, activation="relu", strides=2, padding="same")(x)
-    x = Dropout(0.1)(x)
-    #form 32 by 32 feature map
-    x = Conv2DTranspose(32, 3, activation="relu", strides=2, padding="same")(x)
-    x = Dropout(0.1)(x)
-    #form 64 by 64 feature map
-    x = Conv2DTranspose(64, 3, activation="relu", strides=2, padding="same")(x)
-    x = Dropout(0.1)(x)
-    #form the sigmoid output - single image
-    output_2 = Conv2DTranspose(1, 3, activation="sigmoid", padding="same")(x)
-    img_model = Model(inputs=input_2, outputs=output_2, name="decoder")
-    img_model.summary()
-    return img_model
-
-def COMBINED_model(dim, choice):
-    st_angle = Input(shape=(1))
-
-    # cnn_model = CNN_model(dim)
-    if choice == 1:
-        img_model = IMG_model_1(dim)
-    elif choice == 2:
-        img_model = IMG_model_2(dim)
+def COMBINED_model(dim):
+    img_model = IMG_model(dim)
     input_1 = Input(shape=(dim, dim, 1))
-    # angle = cnn_model(input_1)
-    real_angle = Input(shape=(1)) #real_angles
-    angle_2 = tfm.add(real_angle, st_angle)
+    cnn_model = CNN_model(dim)
+    angle = cnn_model(input_1)
+    st_angle = Input(shape=(1))
+    angle_2 = tfm.add(st_angle, angle)
     angle_2 = Dense(1, activation=None, use_bias=False, trainable=False,
-              kernel_initializer=keras.initializers.Constant(value=1.0), name="Angle_2")(angle_2)
+                  kernel_initializer=keras.initializers.Constant(value=1.0), name="Angle_2")(angle_2)
     img = img_model(angle_2)
-    combined_model = Model(inputs=[st_angle, input_1, real_angle], outputs=img, name="decoder")
+    combined_model = Model(inputs=[input_1, st_angle], outputs=img, name="en/decoder")
     combined_model.summary()
     return combined_model
 
-choice = 1
-dim, num, max_angle, batch_size, epochs = 64, 1024, 70, 64, 30
+
+dim, num, max_angle, batch_size, epochs = 64, 1024, 70, 64, 15
 opt = keras.optimizers.Adam(learning_rate=0.02)
 train = data(dim, num, max_angle)
 
-X_1 = train[0][:, :dim, :, :] #img1
-Y_1 = train[0][:, dim:, :, :] #img2
-X_2 = train[1][:,1] - train[1][:,0] #stereoangles
-real_angles = train[1][:,0] #correct angle of first shape
+#data
+X_1 = train[0][:, :dim, :, :]  # img1
+Y_1 = train[0][:, dim:, :, :]  # img2
+X_2 = train[1][:, 1] - train[1][:, 0]  # stereoangles
+real_angles = train[1][:, 0]  # correct angle of first shape
 
-combined_model = COMBINED_model(dim, choice)
-combined_model.compile(optimizer=opt, loss='mse')
-
-
-
-history = combined_model.fit(x=[X_2, X_1, real_angles], y=Y_1, epochs=epochs, batch_size=batch_size)
-# plt.plot(history.history["loss"])
-# plt.yscale("log")
-# plt.show()
-
-a = combined_model.predict([X_2, X_1, real_angles])
+#train CNN independently
+cnn_model = CNN_model(dim)
+cnn_model.compile(optimizer=opt, loss='mse')
+history = cnn_model.fit(x=X_1, y=real_angles, epochs=epochs, batch_size=batch_size)
+#display CNN training
+a = cnn_model.predict(X_1)
+plt.plot(np.rad2deg(real_angles), np.rad2deg(a), '.', label='predicted shape orientations')
+plt.title('CNN_model predictions')
+plt.grid()
+plt.show()
+assert False
+#train IMG separately
+img_model = IMG_model(dim)
+img_model.compile(optimizer=opt, loss='mse')
+history = img_model.fit(x=train[1][:, 1], y=Y_1, epochs=epochs, batch_size=batch_size)
+#display IMG training
+a = img_model.predict(train[1][:, 1])
 b = Y_1
-c = np.hstack([a,b])
-for i in range(0,4):
-    plt.imshow(c[i][:,:,0], cmap='gray')
-    plt.title(f'IMG_model_{choice}, {round(train[1][:,1][i]/np.pi*180,2)}$\degree$, max_angle={max_angle}')
+c = np.hstack([a, b])
+for i in range(0, 3):
+    plt.imshow(c[i][:, :, 0], cmap='gray')
+    plt.title(
+        f'just IMG_model\n{round(train[1][:,1][i]/np.pi*180,2)}$\degree$, max_angle={max_angle}')
+    plt.show()
+
+#train COMBINED
+combined_model = COMBINED_model(dim)
+combined_model.compile(optimizer=opt, loss='mse')
+history = combined_model.fit(x=[X_1, X_2], y=Y_1, epochs=epochs, batch_size=batch_size)
+#display COMBINED training
+a = combined_model.predict([X_1, X_2])
+c = np.hstack([a, b])
+for i in range(0, 3):
+    plt.imshow(c[i][:, :, 0], cmap='gray')
+    plt.title(
+        f'COMBINED_model\nIMG_model, {round(train[1][:,1][i]/np.pi*180,2)}$\degree$, max_angle={max_angle}')
     plt.show()
