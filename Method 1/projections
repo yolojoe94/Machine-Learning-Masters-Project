@@ -48,21 +48,23 @@ def preprocess(x, y, grid, dim):
     #this is just not moving the y coord for some reason
     return im
 
-def inside_square(space, center, size, angle, dim):
+def inside_L(space, center, size, angle, dim):
     '''takes consts and defines region where inside square, sets the grid values to 1, else 0'''
     #l is the max square radius
     nx = np.sin(angle)
     ny = np.cos(angle) #normal vectors to edge, to determine if coord is inside or outside edge
-    im_sq = np.where((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny)<size/2)
-                     & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx)<size/2),
+    im_l = np.where((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny) < size/2)
+                     & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx) < size/2),
                      1, 0)
+    im_l2 = im_l
+    im_l2 = np.nonzero((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny) < size/2)
+                       & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx) < size/2))
     #second condition uses tangent vectors to edge to find other two edges
     #absolute allows both edges to be considered at once
     #size/2 is the half side length
-    im_sq = np.add(im_sq, np.random.random([dim,dim])/5) #unprocessed image
-    im_sq = gaussian_filter(im_sq, sigma=0.1)
-    return preprocess(grid2d(dim)[0], grid2d(dim)[1], im_sq, dim)
-
+    im_l = np.add(im_l, np.random.random([dim,dim])/5) #unprocessed image
+    im_l = gaussian_filter(im_l, sigma=0.1)
+    return preprocess(grid2d(dim)[0], grid2d(dim)[1], im_l, dim)
 
 def data(dim, num, max_angle):
     '''creates dataset of num dim*(2*dim) images
@@ -92,16 +94,22 @@ def data(dim, num, max_angle):
     
     grid1=[] #this is the list containing all image 1s of 2s
     grid2=[] #stereopair images
-    angle=[]
+    proj1=[]
+    proj2=[]
     for i in np.arange(num):
-        c1 = inside_square(a, c_s[i], length[i], a_s[i][0], dim)
-        c2 = inside_square(a, c_s[i], length[i], a_s[i][1], dim)
+        c1 = inside_L(a, c_s[i], length[i], a_s[i][0], dim)
+        c2 = inside_L(a, c_s[i], length[i], a_s[i][1], dim)
         grid1.append(c1)
+        proj1.append(np.sum(c1, 1))
+        proj2.append(np.sum(c2, 1))
         grid2.append(c2)
-        angle.append(a_s[i][2])
+    print('proj1.shape = ', np.array(proj1).shape)
     grids = np.hstack([np.array([grid1]).reshape(-1, dim, dim, 1)*1.0,
                np.array([grid2]).reshape(-1, dim, dim, 1)*1.0])
-    return grids, a_s
+    projections = np.hstack([np.array([proj1]).reshape(-1, dim, 1)*1.0,
+               np.array([proj2]).reshape(-1, dim, 1)*1.0])
+    print('projections.shape = ', projections.shape)
+    return grids, projections, a_s
 
 
 
@@ -112,18 +120,29 @@ train = data(dim, num, max_angle)
 #data
 X_1 = train[0][:, :dim, :, :]  # img1
 Y_1 = train[0][:, dim:, :, :]  # img2
-X_2 = train[1][:, 1] - train[1][:, 0]  # stereoangles
-real_angles = train[1][:, 0]  # correct angle of first shape
+# X_2 = train[1][:, 1] - train[1][:, 0]  # stereoangles
+# real_angles = train[1][:, 0]  # correct angle of first shape
 
-
-a = ndimage.rotate(X_1, np.deg2rad(10), reshape=False)
-b = Y_1
-c = np.hstack([a, b])
-fig, (ax0, ax1, ax2) = plt.subplots(1, 3)
+print('train[1].shape = ', train[1].shape)
+a = train[1][:, :dim, :]
+print('a.shape = ', a.shape)
+b = train[1][:, dim:, :]
+print('a.shape, b.shape = ', a.shape, b.shape)
+fig, axs = plt.subplots(2, 4)
 fig.suptitle(f'IMG_model, max_angle={max_angle}')
-ax0.imshow(c[0][:, :, 0], cmap='gray')
-ax0.set_title(f'{round(train[1][:,1][0]/np.pi*180,2)}$\degree$')
-ax1.imshow(c[1][:, :, 0], cmap='gray')
-ax1.set_title(f'{round(train[1][:,1][1]/np.pi*180,2)}$\degree$')
-ax2.imshow(c[2][:, :, 0], cmap='gray')
-ax2.set_title(f'{round(train[1][:,1][2]/np.pi*180,2)}$\degree$')
+axs[0,0].plot(np.arange(64), a[0])
+# axs[0,0].set_title(f'{round(train[1][:,1][0]/np.pi*180,2)}$\degree$')
+axs[0,1].plot(np.arange(64), b[0])
+# axs[0,1].set_title(f'{round(train[1][:,1][1]/np.pi*180,2)}$\degree$')
+axs[0,2].plot(np.arange(64), a[2])
+# axs[0,2].set_title(f'{round(train[1][:,1][1]/np.pi*180,2)}$\degree$')
+axs[0,3].plot(np.arange(64), b[2])
+# axs[0,3].set_title(f'{round(train[1][:,1][1]/np.pi*180,2)}$\degree$')
+axs[1,0].imshow(X_1[0], cmap='gray')
+# axs[1,0].set_title(f'{round(train[1][:,1][0]/np.pi*180,2)}$\degree$')
+axs[1,1].imshow(Y_1[0], cmap='gray')
+# axs[1,1].set_title(f'{round(train[1][:,1][1]/np.pi*180,2)}$\degree$')
+axs[1,2].imshow(X_1[2], cmap='gray')
+# axs[1,2].set_title(f'{round(train[1][:,1][1]/np.pi*180,2)}$\degree$')
+axs[1,3].imshow(Y_1[2], cmap='gray')
+# axs[1,3].set_title(f'{round(train[1][:,1][1]/np.pi*180,2)}$\degree$')
