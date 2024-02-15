@@ -215,7 +215,7 @@ stereo1d_model, cnn1d_model = STEREO_1d_model(dim, num)
 stereo1d_model.compile(optimizer=opt, loss="mse")
 history1 = stereo1d_model.fit(x=[v, v2], y=ster, epochs=epochs, batch_size=batch_size)
 assert False
-stereo1d_model.save('mask_trained1.keras')
+stereo1d_model.save('mask_trained3.keras')
 
 
 def show_shapes(dim, dataset, num):
@@ -280,9 +280,9 @@ def STEREO_check(model1, dim, num, min_angle, max_angle):
 
 mn = np.rad2deg(mask_min)
 mx = np.rad2deg(mask_max)
-min_angles = np.array([mn, mn, mn, mn, mn, mn, mn])
-max_angles = np.array([mx, 225, 270, 292, 315, 337, 360])
-epochs = np.array([20,20,30,30,30,40,40])
+min_angles = np.array([mn, mn, 135, 135, 135, 135, 135, 135])
+max_angles = np.array([mx, 225, 225, 270, 292, 315, 337, 360])
+epochs = np.array([30,30,50,50,50, 50,50])
 dim, num, batch_size = 64, 2048, 64
 opt = keras.optimizers.Adam(learning_rate=0.01)
 # culture = np.ones((len(min_angles),epochs))
@@ -304,7 +304,12 @@ for i in range(len(min_angles)):
     real_angles_deg = np.rad2deg(real_angles)
     
     history = stereo1d_model.fit(x=[X_1, Y_1], y=X_2, epochs=epochs[i], batch_size=batch_size)
-
+    # while True:
+    #     if np.average(history.history['loss'][-3:]) >0.0015:
+    #         history = stereo1d_model.fit(x=[X_1, Y_1], y=X_2, epochs=5, batch_size=batch_size)
+    #         pass
+    #     else:
+    #         break
     # culture[i] = history.history['loss']
     # for j in range(i+1):
         # plt.plot(culture[j], label=f'{min_angles[i]}-{max_angles[i]}')#[int(0.1*len(l)):])
@@ -314,4 +319,18 @@ for i in range(len(min_angles)):
     plt.show()
     CNN_check(cnn1d_model, dim, num, min_angle, max_angle)
     STEREO_check(stereo1d_model, dim, num, min_angle, max_angle)
+
+
+
+
+#make a while loop, if av(loss[-3:]) is less than 0.0015 then move to next region
+a = [11, 1, 1, 14, 16, 20]
+while True:
+    if np.average(a[-3:]) >15:
+        a[-1]=a[-1]-1
+        pass
+    else:
+        break
+
+
 
