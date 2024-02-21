@@ -161,11 +161,12 @@ def STEREO_1d_model(dim, num):
     #difference in angle
     sub = tfm.subtract(c2, c1)
     #find index of lowest angle
-    cs = tf.concat([tfm.subtract(c1, tf.constant(3.14159265/4)), c2],1)
+    cs = tf.concat([c1, c2],1)
+    '''should this be argmin or argmax???'''
     x = tfm.argmin(cs, output_type = tf.dtypes.int32, axis = 1)
     x = tf.reshape(x, [-1,1])
     #multiply 2pi by index: = {0; if 1 is smaller, 1; if 2 is larger}
-    y = tfm.multiply(tf.constant(3.14159265/2), tf.cast(x, dtype = tf.dtypes.float32))
+    y = tfm.multiply(tf.constant(3.14159265*2), tf.cast(x, dtype = tf.dtypes.float32))
     y = tf.reshape(y, [-1,1])
     #add 2pi if sub was negative
     add = tfm.add(sub, y)
@@ -206,6 +207,8 @@ def MASK(dataset):
     # plt.show()
     return np.where(mask == True)[0], np.min(real_angles_start_data[mask]), np.max(real_angles_start_data[mask])
 mask, mask_min, mask_max = MASK(start_data)
+mn = np.rad2deg(mask_min)
+mx = np.rad2deg(mask_max)
 
 v = start_data[1][mask, :dim, :]  # proj1
 v2 = start_data[1][mask, dim:, :]  # proj2
@@ -214,8 +217,51 @@ ster = start_data[2][mask, 1] - start_data[2][mask, 0]  # stereoangles
 stereo1d_model, cnn1d_model = STEREO_1d_model(dim, num)
 stereo1d_model.compile(optimizer=opt, loss="mse")
 history1 = stereo1d_model.fit(x=[v, v2], y=ster, epochs=epochs, batch_size=batch_size)
-assert False
-stereo1d_model.save('mask_trained3.keras')
+
+def CNN_check(model1, dim, num, min_angle, max_angle):
+    '''take range of inputs and produce graph of them vs predicitons from a model
+    x-axis: values of shape 1's angle
+    y-axis: predicted angule'''
+    #generate test data
+    test = data(dim, num, 0, 360)
+    X_1 = test[1][:, :dim, :]
+    real_angles_deg = np.rad2deg(test[2][:, 0])
+    p = model1.predict(X_1)
+    plt.vlines(min_angle, np.min(np.rad2deg(p)), np.max(np.rad2deg(p)), 'b')
+    plt.vlines(max_angle, np.min(np.rad2deg(p)), np.max(np.rad2deg(p)), 'b')
+    # p = np.rad2deg(np.arctan2(p[:,0], p[:,1]))
+    #scatter the results
+    plt.scatter(real_angles_deg, np.rad2deg(p))
+    plt.grid()
+    plt.xlabel('Actual Values of shape 1')
+    plt.ylabel('Shape 1 Angle Prediction')
+    plt.title(f'shape 1 angle predictions\nmin_angle={min_angle}\nmax_angle={max_angle}')
+    plt.show()
+
+def STEREO_check(model1, dim, num, min_angle, max_angle):
+    '''take range of inputs and produce graph of them vs predicitons from a model
+    x-axis: values of shape 1's angle
+    y-axis: predicted stereo angle'''
+    #generate test data
+    test = data(dim, num, 0, 360)
+    X_1 = test[1][:, :dim, :]
+    Y_1 = test[1][:, dim:, :]
+    real_angles_deg = np.rad2deg(test[2][:, 1])
+    p = model1.predict([X_1, Y_1]).T
+    #scatter the results
+    plt.scatter(real_angles_deg, np.rad2deg(p))
+    plt.vlines(min_angle, 0, 20, 'b')
+    plt.vlines(max_angle, 0, 20, 'b')
+    plt.grid()
+    plt.xlabel('Actual Values of shape 1')
+    plt.ylabel('Stereo Angle Prediction')
+    plt.title(f'stereo angle prediction\nmin_angle={min_angle}\nmax_angle={max_angle}')
+    plt.show()
+
+CNN_check(cnn1d_model, dim, 512, mn+10, mx)
+STEREO_check(stereo1d_model, dim, 512, mn+10, mx)
+assert False #this is here to stop me accidentally writing over a saved file
+stereo1d_model.save('mask_trained4.keras')
 
 
 def show_shapes(dim, dataset, num):
@@ -242,57 +288,26 @@ def show_shapes(dim, dataset, num):
 
 # show_shapes(dim, start_data, num)
 
-def CNN_check(model1, dim, num, min_angle, max_angle):
-    '''take range of inputs and produce graph of them vs predicitons from a model
-    x-axis: values of shape 1's angle
-    y-axis: predicted angule'''
-    #generate test data
-    test = data(dim, num, min_angle, max_angle)
-    X_1 = test[1][:, :dim, :]
-    real_angles_deg = np.rad2deg(test[2][:, 0])
-    p = model1.predict(X_1)
-    # p = np.rad2deg(np.arctan2(p[:,0], p[:,1]))
-    #scatter the results
-    plt.scatter(real_angles_deg, np.rad2deg(p))
-    plt.grid()
-    plt.xlabel('Actual Values of shape 1')
-    plt.ylabel('Shape 1 Angle Prediction')
-    plt.title(f'shape 1 angle predictions\nmin_angle={min_angle}\nmax_angle={max_angle}')
-    plt.show()
 
-def STEREO_check(model1, dim, num, min_angle, max_angle):
-    '''take range of inputs and produce graph of them vs predicitons from a model
-    x-axis: values of shape 1's angle
-    y-axis: predicted stereo angle'''
-    #generate test data
-    test = data(dim, num, min_angle, max_angle)
-    X_1 = test[1][:, :dim, :]
-    Y_1 = test[1][:, dim:, :]
-    real_angles_deg = np.rad2deg(test[2][:, 1])
-    p = model1.predict([X_1, Y_1]).T
-    #scatter the results
-    plt.scatter(real_angles_deg, np.rad2deg(p))
-    plt.grid()
-    plt.xlabel('Actual Values of shape 1')
-    plt.ylabel('Stereo Angle Prediction')
-    plt.title(f'stereo angle prediction\nmin_angle={min_angle}\nmax_angle={max_angle}')
-    plt.show()
 
-mn = np.rad2deg(mask_min)
-mx = np.rad2deg(mask_max)
-min_angles = np.array([mn, mn, 135, 135, 135, 135, 135, 135])
-max_angles = np.array([mx, 225, 225, 270, 292, 315, 337, 360])
-epochs = np.array([30,30,50,50,50, 50,50])
-dim, num, batch_size = 64, 2048, 64
+steps = np.arange(0,12)
+min_angles = np.repeat(mn+10 - steps*15, 2)
+max_angles = np.repeat(mx + steps*15, 2)
+max_angles = np.append(max_angles[1:-4], [360, 360, 360])
+min_angles = np.append(min_angles[1:-3], [min_angles[-1], 0])
+epochs = np.ones(np.shape(min_angles), int)*int(50)
+epochs[0:2]=40
+num = mask.shape[0] + np.arange(0,len(min_angles)) *round(mask.shape[0]/(mx-mn-10)*15)
+dim, batch_size = 64, 64
 opt = keras.optimizers.Adam(learning_rate=0.01)
 # culture = np.ones((len(min_angles),epochs))
-
-stereo1d_model = keras.models.load_model('mask_trained1.keras')
+print(mask.shape)
+stereo1d_model = keras.models.load_model('mask_trained4.keras')
 
 for i in range(len(min_angles)):
     min_angle = min_angles[i]
     max_angle = max_angles[i]
-    train = data(dim, num, min_angle, max_angle)
+    train = data(dim, num[i], min_angle, max_angle)
 
     #data
     X_1 = train[1][:, :dim, :]  # proj1
@@ -302,7 +317,7 @@ for i in range(len(min_angles)):
     X_2 = train[2][:, 1] - train[2][:, 0]  # stereoangles
     real_angles = train[2][:, 0]  # correct angle of first shape in radians
     real_angles_deg = np.rad2deg(real_angles)
-    
+    print(num[i])
     history = stereo1d_model.fit(x=[X_1, Y_1], y=X_2, epochs=epochs[i], batch_size=batch_size)
     # while True:
     #     if np.average(history.history['loss'][-3:]) >0.0015:
@@ -317,20 +332,11 @@ for i in range(len(min_angles)):
     plt.plot(history.history['loss'])
     # plt.legend()
     plt.show()
-    CNN_check(cnn1d_model, dim, num, min_angle, max_angle)
-    STEREO_check(stereo1d_model, dim, num, min_angle, max_angle)
+    CNN_check(cnn1d_model, dim, num[i], min_angle, max_angle)
+    STEREO_check(stereo1d_model, dim, num[i], min_angle, max_angle)
 
 
 
-
-#make a while loop, if av(loss[-3:]) is less than 0.0015 then move to next region
-a = [11, 1, 1, 14, 16, 20]
-while True:
-    if np.average(a[-3:]) >15:
-        a[-1]=a[-1]-1
-        pass
-    else:
-        break
 
 
 
