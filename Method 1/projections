@@ -17,7 +17,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv1D, MaxPooling1D, Dropout
 from tensorflow.keras.layers import Flatten, Dense
 import os
-os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 '''plan:
     make 2d space array
@@ -28,78 +28,86 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
     works with cos(4x) in 0-360 range
     
     '''
+
+
 def grid2d(size):
     '''creates values of coords up to image size, then makes grid of coords.
     does this _number_ of times to make 3d grid of unrelated slices'''
-    xx, yy = np.meshgrid(np.linspace(0,size-1,size),
-                            np.linspace(0,size-1,size), sparse=True)
+    xx, yy = np.meshgrid(np.linspace(0, size-1, size),
+                         np.linspace(0, size-1, size), sparse=True)
     return xx, yy
 
 
 def preprocess(x, y, grid, dim):
     '''recenters image using average mass position
     doesnt work on y height ??'''
-    
+
     dx = np.sum(x*grid)/np.sum(grid)-dim/2
     dy = np.sum(y*grid)/np.sum(grid)-dim/2
     im = np.roll(grid, -int(np.round(dy)), axis=0)
     im = np.roll(im, -int(np.round(dx)), axis=1)
-    #this is just not moving the y coord for some reason
+    # this is just not moving the y coord for some reason
     return im
+
 
 def inside_L(space, center, size, angle, dim):
     '''takes consts and defines region where inside square, sets the grid values to 1, else 0'''
-    #l is the max square radius
+    # l is the max square radius
     # angle=0
     nx = np.sin(angle)
-    ny = np.cos(angle) #normal vectors to edge, to determine if coord is inside or outside edge
-    center_b = [3*size/8,-size/8]
+    # normal vectors to edge, to determine if coord is inside or outside edge
+    ny = np.cos(angle)
+    center_b = [3*size/8, -size/8]
     im_1 = np.where((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny) < size/4)
-                      & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx) < size/8),
-                      1, 0)
-    center+=[center_b[0]*nx + center_b[1]*ny, center_b[0]*ny  - center_b[1]*nx]
+                    & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx) < size/8),
+                    1, 0)
+    center += [center_b[0]*nx + center_b[1]
+               * ny, center_b[0]*ny - center_b[1]*nx]
     im_2 = np.where((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny) < size/8)
-                      & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx) < size/4),
-                      1, 0)
-    center-=[center_b[0]*nx + center_b[1]*ny, center_b[0]*ny  - center_b[1]*nx]
-    #second condition uses tangent vectors to edge to find other two edges
-    #absolute allows both edges to be considered at once
-    #size/2 is the half side length
-    im_l = np.add(im_1, im_2, np.random.random([dim,dim])/5) #unprocessed image
+                    & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx) < size/4),
+                    1, 0)
+    center -= [center_b[0]*nx + center_b[1]
+               * ny, center_b[0]*ny - center_b[1]*nx]
+    # second condition uses tangent vectors to edge to find other two edges
+    # absolute allows both edges to be considered at once
+    # size/2 is the half side length
+    im_l = np.add(im_1, im_2, np.random.random(
+        [dim, dim])/5)  # unprocessed image
     im_l = gaussian_filter(im_l, sigma=0.1)
     return preprocess(grid2d(dim)[0], grid2d(dim)[1], im_l, dim)
     # return np.where(im_l>0.3, 1, 0)
+
 
 def data(dim, num, min_angle, max_angle):
     '''creates dataset of num dim*(2*dim) images
     res determines number of intervals between 0 and 90 degrees
     returns arrays of shapes, the stereoimages for each shape and the angle between them'''
-    a_s = np.zeros((num,3))
-    c_s = np.zeros((num,2))
-                      
+    a_s = np.zeros((num, 3))
+    c_s = np.zeros((num, 2))
+
     '''these are randomised start values for the shapes'''
-    xcs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2)*0+ 3*dim/8
-    ycs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2)*0+ dim/2
-    length = ((np.random.rand(num)-0.5)*dim/4+ 5*dim/8)
+    xcs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2)*0 + 3*dim/8
+    ycs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2)*0 + dim/2
+    length = ((np.random.rand(num)-0.5)*dim/4 + 5*dim/8)
     # length[:] = dim/2
-    #this 0, 90 defines the angular range of results
-    a1 = (np.random.uniform(min_angle, max_angle, num))#in degrees
+    # this 0, 90 defines the angular range of results
+    a1 = (np.random.uniform(min_angle, max_angle, num))  # in degrees
     a2 = a1+10
-    c_s[np.arange(num), np.zeros(num,int)] = xcs
-    c_s[np.arange(num), np.zeros(num,int)+1] = ycs #centers
-    
-    a_s[np.arange(num), np.zeros(num,int)] = (a1/180*np.pi)#in radians
-    a_s[np.arange(num), np.zeros(num,int)+1] = (a2/180*np.pi)#in radians
-    a_s[np.arange(num), np.zeros(num,int)+2] = a1#in degrees
+    c_s[np.arange(num), np.zeros(num, int)] = xcs
+    c_s[np.arange(num), np.zeros(num, int)+1] = ycs  # centers
+
+    a_s[np.arange(num), np.zeros(num, int)] = (a1/180*np.pi)  # in radians
+    a_s[np.arange(num), np.zeros(num, int)+1] = (a2/180*np.pi)  # in radians
+    a_s[np.arange(num), np.zeros(num, int)+2] = a1  # in degrees
     '''this is important, the validation for the training is the first angle.
     that means we will be asking for only one angle as our final output'''
-    a = grid2d(dim)#grid for making pixels on
-    
-    grid1=[] #this is the list containing all image 1s of 2s
-    grid2=[] #stereopair images
-    proj1=[]
-    proj2=[]
-    x = np.arange(0,64)
+    a = grid2d(dim)  # grid for making pixels on
+
+    grid1 = []  # this is the list containing all image 1s of 2s
+    grid2 = []  # stereopair images
+    proj1 = []
+    proj2 = []
+    x = np.arange(0, 64)
     for i in np.arange(num):
         c1 = inside_L(a, c_s[i], length[i], a_s[i][0], dim)
         c2 = inside_L(a, c_s[i], length[i], a_s[i][1], dim)
@@ -112,11 +120,12 @@ def data(dim, num, min_angle, max_angle):
         proj2.append(np.sum(c2, 1))
         # grid2.append(c2)
     # grids = np.hstack([np.array([grid1]).reshape(-1, dim, dim, 1)*1.0,
-                # np.array([grid2]).reshape(-1, dim, dim, 1)*1.0])
+        # np.array([grid2]).reshape(-1, dim, dim, 1)*1.0])
     projections = np.hstack([np.array([proj1]).reshape(-1, dim, 1)*1.0,
-               np.array([proj2]).reshape(-1, dim, 1)*1.0])
+                             np.array([proj2]).reshape(-1, dim, 1)*1.0])
     # return grids, projections, a_s
     return [], projections, a_s
+
 
 def CNN_1d_model(dim):
     '''takes a projection input
@@ -140,6 +149,31 @@ def CNN_1d_model(dim):
     model.summary()
     return model
 
+
+def CNN_CHEAT(dim):
+    '''takes a projection input
+    outputs an angle for the image orientation
+    USES GROUND TRUTH'''
+    inputs = Input(shape=(dim, 1))
+    x = Conv1D(16, kernel_size=(3), activation='relu', padding='same')(inputs)
+    x = MaxPooling1D(pool_size=(2))(x)
+    x = Dropout(0.1)(x)
+    x = Conv1D(32, kernel_size=(3), activation='relu', padding='same')(x)
+    x = MaxPooling1D(pool_size=(2))(x)
+    x = Dropout(0.1)(x)
+    x = Conv1D(16, kernel_size=(3), activation='relu', padding='same')(x)
+    x = MaxPooling1D(pool_size=(2))(x)
+    x = Dropout(0.1)(x)
+    x = Flatten()(x)
+    x = Dense(16, activation='relu')(x)
+    x = Dense(2, activation='linear')(x)
+    angle1 = tfm.atan2(x[:, 0], x[:, 1], name="angle1")
+    outputs = tf.reshape(angle1, [-1, 1])
+    model = Model(inputs=inputs, outputs=outputs)
+    model.summary()
+    return model
+
+
 def STEREO_1d_model(dim, num):
     '''takes a double width dual projection, splits and determines the angle of each
     then outputs a single angle
@@ -149,47 +183,76 @@ def STEREO_1d_model(dim, num):
     cnn_1d_model = CNN_1d_model(dim)
     inputs_st1 = Input(shape=(dim, 1))
     inputs_st2 = Input(shape=(dim, 1))
-    #calculate angles of shape 1&2
+    # calculate angles of shape 1&2
     c1 = cnn_1d_model(inputs_st1)
     c2 = cnn_1d_model(inputs_st2)
-    # angle1 = tfm.atan2(c1[:, 0], c1[:, 1], name="angle1")
-    # angle1 = tf.reshape(angle1, [-1, 1])
-    # angle2 = tfm.atan2(c2[:, 0], c2[:, 1], name="angle2")
-    # angle2 = tf.reshape(angle2, [-1, 1])
-    # angle1 = c1
-    # angle2 = c2
-    #difference in angle
+    # difference in angle
     sub = tfm.subtract(c2, c1)
-    #find index of lowest angle
-    cs = tf.concat([c1, c2],1)
+    # find index of lowest angle
+    cs = tf.concat([c1, c2], 1)
     '''should this be argmin or argmax???'''
-    x = tfm.argmin(cs, output_type = tf.dtypes.int32, axis = 1)
-    x = tf.reshape(x, [-1,1])
-    #multiply 2pi by index: = {0; if 1 is smaller, 1; if 2 is larger}
-    y = tfm.multiply(tf.constant(3.14159265*2), tf.cast(x, dtype = tf.dtypes.float32))
-    y = tf.reshape(y, [-1,1])
-    #add 2pi if sub was negative
+    x = tfm.argmin(cs, output_type=tf.dtypes.int32, axis=1)
+    x = tf.reshape(x, [-1, 1])
+    # multiply 2pi by index: = {0; if 1 is smaller, 1; if 2 is larger}
+    y = tfm.multiply(tf.constant(3.14159265*2),
+                     tf.cast(x, dtype=tf.dtypes.float32))
+    y = tf.reshape(y, [-1, 1])
+    # add 2pi if sub was negative
     add = tfm.add(sub, y)
-    #make it a layer so it can be called later
+    # make it a layer so it can be called later
     add = Dense(1, activation=None, use_bias=False, trainable=False,
-              kernel_initializer=keras.initializers.Constant(value=1.0), name="stereo_out")(add)
-        
+                kernel_initializer=keras.initializers.Constant(value=1.0), name="stereo_out")(add)
+
     stereo_model = Model(inputs=[inputs_st1, inputs_st2], outputs=sub)
     stereo_model.summary()
-    
+
     return stereo_model, cnn_1d_model
 
 
-dim, num, min_angle, max_angle, batch_size, epochs = 64, 16384, 0, 360, 64, 160
+def STEREO_CHEAT(dim, num):
+    '''takes TWO IMAGES
+    CHEATS TO GET THIER ANGLES
+    SUBTRACTS THEM TO FIND STEREO ANGLE'''
+    cnn_CHEAT = CNN_CHEAT(dim)
+    inputs_st1 = Input(shape=(dim, 1))
+    inputs_st2 = Input(shape=(dim, 1))
+    # calculate angles of shape 1&2
+    c1 = cnn_CHEAT(inputs_st1)
+    c2 = cnn_CHEAT(inputs_st2)
+    # difference in angle
+    sub = tfm.subtract(c2, c1)
+    # find index of lowest angle
+    cs = tf.concat([c1, c2], 1)
+    '''should this be argmin or argmax???'''
+    x = tfm.argmin(cs, output_type=tf.dtypes.int32, axis=1)
+    x = tf.reshape(x, [-1, 1])
+    # multiply 2pi by index: = {0; if 1 is smaller, 1; if 2 is larger}
+    y = tfm.multiply(tf.constant(3.14159265*2),
+                     tf.cast(x, dtype=tf.dtypes.float32))
+    y = tf.reshape(y, [-1, 1])
+    # add 2pi if sub was negative
+    add = tfm.add(sub, y)
+    # make it a layer so it can be called later
+    add = Dense(1, activation=None, use_bias=False, trainable=False,
+                kernel_initializer=keras.initializers.Constant(value=1.0), name="stereo_out")(add)
+
+    stereo_CHEAT = Model(inputs=[inputs_st1, inputs_st2], outputs=sub)
+    stereo_CHEAT.summary()
+    return stereo_CHEAT, cnn_CHEAT
+
+
+dim, num, min_angle, max_angle, batch_size, epochs = 64, 16384, 0, 360, 64, 200
 opt = keras.optimizers.Adam(learning_rate=0.01)
-start_data = data(dim, num, min_angle, max_angle)
+# start_data = data(dim, num, min_angle, max_angle)
+
 
 def MASK(dataset):
     '''make a mask for a given dataset'''
     # dataset=start_data
     u = np.arange(-32, 32)
     v = dataset[1][:, :dim, 0]  # proj1
-    real_angles_start_data = dataset[2][:, 0] # correct angle of first shape in radians
+    # correct angle of first shape in radians
+    real_angles_start_data = dataset[2][:, 0]
     # m = np.mean(u[None, :]*v, axis=1)/np.mean(v, axis=1)
     w = np.mean(u[None, :]**2*v, axis=1)/np.mean(v, axis=1)**2
     s = np.mean(u[None, :]**3*v, axis=1)/np.mean(v, axis=1)**3
@@ -197,40 +260,47 @@ def MASK(dataset):
     # plt.plot(real_angles_start_data, w, '.')
     # plt.plot(real_angles_start_data, s, '.')
     # plt.show()
-    mask = (w>11)*(s>7)
+    mask = (w > 11)*(s > 7)
     # print(np.where(mask == True)[0].shape)
     # print(np.min(real_angles_start_data[mask]), '\n', np.max(real_angles_start_data[mask]))
-    #make larger dataset, select only a few hundred through mask
-    #train on mask to establish gradient
-    #expand training back to 2048 to extend gradient for angular range
+    # make larger dataset, select only a few hundred through mask
+    # train on mask to establish gradient
+    # expand training back to 2048 to extend gradient for angular range
     # plt.plot(real_angles_start_data[mask], '.')
     # plt.show()
     return np.where(mask == True)[0], np.min(real_angles_start_data[mask]), np.max(real_angles_start_data[mask])
-mask, mask_min, mask_max = MASK(start_data)
-mn = np.rad2deg(mask_min)
-mx = np.rad2deg(mask_max)
 
-v = start_data[1][mask, :dim, :]  # proj1
-v2 = start_data[1][mask, dim:, :]  # proj2
-ster = start_data[2][mask, 1] - start_data[2][mask, 0]  # stereoangles
 
-stereo1d_model, cnn1d_model = STEREO_1d_model(dim, num)
-stereo1d_model.compile(optimizer=opt, loss="mse")
-history1 = stereo1d_model.fit(x=[v, v2], y=ster, epochs=epochs, batch_size=batch_size)
+# mask, mask_min, mask_max = MASK(start_data)
+# mn = np.rad2deg(mask_min)
+# mx = np.rad2deg(mask_max)
+
+# v1 = start_data[1][mask, :dim, :]  # proj1
+# v2 = start_data[1][mask, dim:, :]  # proj2
+# w1 = start_data[2][mask, 0]  # real angles shape 1
+# ster = start_data[2][mask, 1] - start_data[2][mask, 0]  # stereoangles
+
+
+# stereo1d_model, cnn1d_model = STEREO_1d_model(dim, num)
+# stereo1d_model.compile(optimizer=opt, loss="mse")
+# history1 = stereo1d_model.fit(x=[v1, v2], y=ster, epochs=epochs, batch_size=batch_size)
+
 
 def CNN_check(model1, dim, num, min_angle, max_angle):
     '''take range of inputs and produce graph of them vs predicitons from a model
     x-axis: values of shape 1's angle
     y-axis: predicted angule'''
-    #generate test data
+    # generate test data
     test = data(dim, num, 0, 360)
     X_1 = test[1][:, :dim, :]
     real_angles_deg = np.rad2deg(test[2][:, 0])
     p = model1.predict(X_1)
+    print(p.shape)
+    print(real_angles_deg.shape)
     plt.vlines(min_angle, np.min(np.rad2deg(p)), np.max(np.rad2deg(p)), 'b')
     plt.vlines(max_angle, np.min(np.rad2deg(p)), np.max(np.rad2deg(p)), 'b')
     # p = np.rad2deg(np.arctan2(p[:,0], p[:,1]))
-    #scatter the results
+    # scatter the results
     plt.scatter(real_angles_deg, np.rad2deg(p))
     plt.grid()
     plt.xlabel('Actual Values of shape 1')
@@ -238,17 +308,18 @@ def CNN_check(model1, dim, num, min_angle, max_angle):
     plt.title(f'shape 1 angle predictions\nmin_angle={min_angle}\nmax_angle={max_angle}')
     plt.show()
 
+
 def STEREO_check(model1, dim, num, min_angle, max_angle):
     '''take range of inputs and produce graph of them vs predicitons from a model
     x-axis: values of shape 1's angle
     y-axis: predicted stereo angle'''
-    #generate test data
+    # generate test data
     test = data(dim, num, 0, 360)
     X_1 = test[1][:, :dim, :]
     Y_1 = test[1][:, dim:, :]
     real_angles_deg = np.rad2deg(test[2][:, 1])
     p = model1.predict([X_1, Y_1]).T
-    #scatter the results
+    # scatter the results
     plt.scatter(real_angles_deg, np.rad2deg(p))
     plt.vlines(min_angle, 0, 20, 'b')
     plt.vlines(max_angle, 0, 20, 'b')
@@ -258,10 +329,15 @@ def STEREO_check(model1, dim, num, min_angle, max_angle):
     plt.title(f'stereo angle prediction\nmin_angle={min_angle}\nmax_angle={max_angle}')
     plt.show()
 
-CNN_check(cnn1d_model, dim, 512, mn+10, mx)
-STEREO_check(stereo1d_model, dim, 512, mn+10, mx)
-assert False #this is here to stop me accidentally writing over a saved file
-stereo1d_model.save('mask_trained4.keras')
+
+# CNN_check(cnn1d_model, dim, 2048, mn, mx)
+# STEREO_check(stereo1d_model, dim, 2048, mn, mx)
+# plt.plot(history1.history['loss'][int(round(0.1*len(history1.history['loss']), 0)):])
+# plt.show()
+# plt.plot(history1.history['loss'][:-int(round(0.1*len(history1.history['loss']), 0))])
+# plt.show()
+# assert False  # this is here to stop me accidentally writing over a saved file
+# stereo1d_model.save('mask_trained4.keras')
 
 
 def show_shapes(dim, dataset, num):
@@ -269,35 +345,53 @@ def show_shapes(dim, dataset, num):
     Z_2 = dataset[0][:, dim:, :, :]  # img2
     a = dataset[1][:, :dim, :]
     b = dataset[1][:, dim:, :]
-    [i, j, k] = np.random.randint(0,num, (3))
+    [i, j, k] = np.random.randint(0, num, (3))
     fig, axs = plt.subplots(2, 6)
     fig.suptitle(f'IMG_model, max_angle={max_angle}')
-    axs[0,0].plot(np.arange(64), a[i])
-    axs[0,1].plot(np.arange(64), b[i])
-    axs[0,2].plot(np.arange(64), a[j])
-    axs[0,3].plot(np.arange(64), b[j])
-    axs[0,4].plot(np.arange(64), a[k])
-    axs[0,5].plot(np.arange(64), b[k])
-    axs[1,0].imshow(Z_1[i], cmap='gray')
-    axs[1,1].imshow(Z_2[i], cmap='gray')
-    axs[1,2].imshow(Z_1[j], cmap='gray')
-    axs[1,3].imshow(Z_2[j], cmap='gray')
-    axs[1,4].imshow(Z_1[k], cmap='gray')
-    axs[1,5].imshow(Z_2[k], cmap='gray')
+    axs[0, 0].plot(np.arange(64), a[i])
+    axs[0, 1].plot(np.arange(64), b[i])
+    axs[0, 2].plot(np.arange(64), a[j])
+    axs[0, 3].plot(np.arange(64), b[j])
+    axs[0, 4].plot(np.arange(64), a[k])
+    axs[0, 5].plot(np.arange(64), b[k])
+    axs[1, 0].imshow(Z_1[i], cmap='gray')
+    axs[1, 1].imshow(Z_2[i], cmap='gray')
+    axs[1, 2].imshow(Z_1[j], cmap='gray')
+    axs[1, 3].imshow(Z_2[j], cmap='gray')
+    axs[1, 4].imshow(Z_1[k], cmap='gray')
+    axs[1, 5].imshow(Z_2[k], cmap='gray')
     plt.show()
 
 # show_shapes(dim, start_data, num)
+cheat_data = data(dim, 2048, 0, 360)
+v1 = cheat_data[1][:, :dim, :]  # proj1
+v2 = cheat_data[1][:, dim:, :]  # proj2
+w1 = cheat_data[2][:, 0]  # real angles shape 1
+ster = cheat_data[2][:, 1] - cheat_data[2][:, 0]  # stereoangles
 
+stereo_CHEAT, cnn_CHEAT = STEREO_CHEAT(dim, num)
+cnn_CHEAT.compile(optimizer=opt, loss="mse")
+history0 = cnn_CHEAT.fit(x=v1, y=w1, epochs=100, batch_size=batch_size)
+plt.plot(history0.history['loss'])
+plt.show()
+CNN_check(cnn_CHEAT, dim, 4096, 0, 360)
 
+stereo_CHEAT.compile(optimizer=opt, loss="mse")
+history1 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=100, batch_size=batch_size)
+plt.plot(history1.history['loss'])
+plt.show()
+STEREO_check(stereo_CHEAT, dim, 4096, 0, 360)
 
-steps = np.arange(0,12)
+'''
+steps = np.arange(0, 12)
 min_angles = np.repeat(mn+10 - steps*15, 2)
 max_angles = np.repeat(mx + steps*15, 2)
 max_angles = np.append(max_angles[1:-4], [360, 360, 360])
 min_angles = np.append(min_angles[1:-3], [min_angles[-1], 0])
 epochs = np.ones(np.shape(min_angles), int)*int(50)
-epochs[0:2]=40
-num = mask.shape[0] + np.arange(0,len(min_angles)) *round(mask.shape[0]/(mx-mn-10)*15)
+epochs[0:2] = 40
+num = mask.shape[0] + np.arange(0, len(min_angles)) * \
+    round(mask.shape[0]/(mx-mn-10)*15)
 dim, batch_size = 64, 64
 opt = keras.optimizers.Adam(learning_rate=0.01)
 # culture = np.ones((len(min_angles),epochs))
@@ -309,7 +403,7 @@ for i in range(len(min_angles)):
     max_angle = max_angles[i]
     train = data(dim, num[i], min_angle, max_angle)
 
-    #data
+    # data
     X_1 = train[1][:, :dim, :]  # proj1
     Y_1 = train[1][:, dim:, :]  # proj2
     # Z_1 = train[0][:, :dim, :, :]  # img1
@@ -318,7 +412,8 @@ for i in range(len(min_angles)):
     real_angles = train[2][:, 0]  # correct angle of first shape in radians
     real_angles_deg = np.rad2deg(real_angles)
     print(num[i])
-    history = stereo1d_model.fit(x=[X_1, Y_1], y=X_2, epochs=epochs[i], batch_size=batch_size)
+    history = stereo1d_model.fit(
+        x=[X_1, Y_1], y=X_2, epochs=epochs[i], batch_size=batch_size)
     # while True:
     #     if np.average(history.history['loss'][-3:]) >0.0015:
     #         history = stereo1d_model.fit(x=[X_1, Y_1], y=X_2, epochs=5, batch_size=batch_size)
@@ -327,16 +422,11 @@ for i in range(len(min_angles)):
     #         break
     # culture[i] = history.history['loss']
     # for j in range(i+1):
-        # plt.plot(culture[j], label=f'{min_angles[i]}-{max_angles[i]}')#[int(0.1*len(l)):])
-        # plt.title('loss history')
+    # plt.plot(culture[j], label=f'{min_angles[i]}-{max_angles[i]}')#[int(0.1*len(l)):])
+    # plt.title('loss history')
     plt.plot(history.history['loss'])
     # plt.legend()
     plt.show()
     CNN_check(cnn1d_model, dim, num[i], min_angle, max_angle)
     STEREO_check(stereo1d_model, dim, num[i], min_angle, max_angle)
-
-
-
-
-
-
+'''
