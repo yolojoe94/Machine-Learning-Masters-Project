@@ -59,7 +59,7 @@ def inside_L(space, center, size, angle, dim):
     ny = np.cos(angle)
     center_b = [3*size/8, -size/8]
     im_1 = np.where((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny) < size/4)
-                    & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx) < size/8),
+                    & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx) < size/16),
                     1, 0)
     center += [center_b[0]*nx + center_b[1]
                * ny, center_b[0]*ny - center_b[1]*nx]
@@ -111,20 +111,20 @@ def data(dim, num, min_angle, max_angle):
     for i in np.arange(num):
         c1 = inside_L(a, c_s[i], length[i], a_s[i][0], dim)
         c2 = inside_L(a, c_s[i], length[i], a_s[i][1], dim)
-        # grid1.append(c1)
+        grid1.append(c1)
         dx = np.sum(x*np.sum(c1, 1))/np.sum(np.sum(c1, 1))-dim/2
         im = np.roll(np.sum(c1, 1), -int(np.round(dx)), axis=0)
         proj1.append(im)
         dx = np.sum(x*np.sum(c2, 1))/np.sum(np.sum(c2, 1))-dim/2
         im = np.roll(np.sum(c2, 1), -int(np.round(dx)), axis=0)
         proj2.append(np.sum(c2, 1))
-        # grid2.append(c2)
-    # grids = np.hstack([np.array([grid1]).reshape(-1, dim, dim, 1)*1.0,
-        # np.array([grid2]).reshape(-1, dim, dim, 1)*1.0])
+        grid2.append(c2)
+    grids = np.hstack([np.array([grid1]).reshape(-1, dim, dim, 1)*1.0,
+        np.array([grid2]).reshape(-1, dim, dim, 1)*1.0])
     projections = np.hstack([np.array([proj1]).reshape(-1, dim, 1)*1.0,
                              np.array([proj2]).reshape(-1, dim, 1)*1.0])
-    # return grids, projections, a_s
-    return [], projections, a_s
+    return grids, projections, a_s
+    # return [], projections, a_s
 
 
 def CNN_1d_model(dim):
@@ -291,7 +291,7 @@ def CNN_check(model1, dim, num, min_angle, max_angle):
     x-axis: values of shape 1's angle
     y-axis: predicted angule'''
     # generate test data
-    test = data(dim, num, 0, 360)
+    test = data(dim, num, -180, 180)
     X_1 = test[1][:, :dim, :]
     real_angles_deg = np.rad2deg(test[2][:, 0])
     p = model1.predict(X_1)
@@ -299,6 +299,7 @@ def CNN_check(model1, dim, num, min_angle, max_angle):
     print(real_angles_deg.shape)
     plt.vlines(min_angle, np.min(np.rad2deg(p)), np.max(np.rad2deg(p)), 'b')
     plt.vlines(max_angle, np.min(np.rad2deg(p)), np.max(np.rad2deg(p)), 'b')
+    plt.plot([min_angle, max_angle], [min_angle, max_angle], 'r-')
     # p = np.rad2deg(np.arctan2(p[:,0], p[:,1]))
     # scatter the results
     plt.scatter(real_angles_deg, np.rad2deg(p))
@@ -314,7 +315,7 @@ def STEREO_check(model1, dim, num, min_angle, max_angle):
     x-axis: values of shape 1's angle
     y-axis: predicted stereo angle'''
     # generate test data
-    test = data(dim, num, 0, 360)
+    test = data(dim, num, -180, 180)
     X_1 = test[1][:, :dim, :]
     Y_1 = test[1][:, dim:, :]
     real_angles_deg = np.rad2deg(test[2][:, 1])
@@ -363,24 +364,35 @@ def show_shapes(dim, dataset, num):
     plt.show()
 
 # show_shapes(dim, start_data, num)
-cheat_data = data(dim, 2048, 0, 360)
-v1 = cheat_data[1][:, :dim, :]  # proj1
-v2 = cheat_data[1][:, dim:, :]  # proj2
-w1 = cheat_data[2][:, 0]  # real angles shape 1
-ster = cheat_data[2][:, 1] - cheat_data[2][:, 0]  # stereoangles
 
 stereo_CHEAT, cnn_CHEAT = STEREO_CHEAT(dim, num)
 cnn_CHEAT.compile(optimizer=opt, loss="mse")
-history0 = cnn_CHEAT.fit(x=v1, y=w1, epochs=100, batch_size=batch_size)
-plt.plot(history0.history['loss'])
-plt.show()
-CNN_check(cnn_CHEAT, dim, 4096, 0, 360)
 
-stereo_CHEAT.compile(optimizer=opt, loss="mse")
-history1 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=100, batch_size=batch_size)
-plt.plot(history1.history['loss'])
-plt.show()
-STEREO_check(stereo_CHEAT, dim, 4096, 0, 360)
+for k in [180]:
+    amin = -k
+    amax = k
+    
+    cheat_data = data(dim, 2048, amin, amax)
+    v1 = cheat_data[1][:, :dim, :]  # proj1
+    v2 = cheat_data[1][:, dim:, :]  # proj2
+    w1 = cheat_data[2][:, 0]  # real angles shape 1
+    ster = cheat_data[2][:, 1] - cheat_data[2][:, 0]  # stereoangles
+    history0 = cnn_CHEAT.fit(x=v1, y=w1, epochs=10, batch_size=batch_size)
+    plt.plot(history0.history['loss'])
+    plt.show()
+    CNN_check(cnn_CHEAT, dim, 1024, amin, amax)
+
+k=w1.argsort()
+v1s = v1[k, ...]
+w1s = w1[k, ...]
+plt.plot(w1s[::10])
+plt.matshow(v1s[::10,:,0].T)
+k=w1.argsort()
+# stereo_CHEAT.compile(optimizer=opt, loss="mse")
+# history1 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=10, batch_size=batch_size)
+# plt.plot(history1.history['loss'])
+# plt.show()
+# STEREO_check(stereo_CHEAT, dim, 4096, amin, amax)
 
 '''
 steps = np.arange(0, 12)
