@@ -78,7 +78,7 @@ def inside_L(space, center, size, angle, dim):
     # return np.where(im_l>0.3, 1, 0)
 
 
-def data_vars(dim, num, min_angle, max_angle):
+def data(dim, num, min_angle, max_angle):
     '''creates dataset of num dim*(2*dim) images
     res determines number of intervals between 0 and 90 degrees
     returns arrays of shapes, the stereoimages for each shape and the angle between them'''
@@ -99,11 +99,8 @@ def data_vars(dim, num, min_angle, max_angle):
     a_s[np.arange(num), np.zeros(num, int)] = (a1/180*np.pi)  # in radians
     a_s[np.arange(num), np.zeros(num, int)+1] = (a2/180*np.pi)  # in radians
     a_s[np.arange(num), np.zeros(num, int)+2] = a1  # in degrees
-    return c_s, length, a_s
-
-
-def data(c_s, length, a_s, dim, num, min_angle, max_angle):
-    # c_s, length, a_s = data_vars(dim, num, min_angle, max_angle)
+    '''this is important, the validation for the training is the first angle.
+    that means we will be asking for only one angle as our final output'''
     a = grid2d(dim)  # grid for making pixels on
 
     grid1 = []  # this is the list containing all image 1s of 2s
@@ -246,9 +243,7 @@ def STEREO_CHEAT(dim, num):
 
 dim, num, min_angle, max_angle, batch_size, epochs = 64, 16384, 0, 360, 64, 200
 opt = keras.optimizers.Adam(learning_rate=0.01)
-
-# c_s, length, a_s = data_vars(dim, num, min_angle, max_angle)
-# start_data = data(c_s, length, a_s, dim, num, min_angle, max_angle)
+# start_data = data(dim, num, min_angle, max_angle)
 
 
 def MASK(dataset):
@@ -296,8 +291,7 @@ def CNN_check(model1, dim, num, min_angle, max_angle):
     x-axis: values of shape 1's angle
     y-axis: predicted angule'''
     # generate test data
-    c_s, length, a_s = data_vars(dim, num, -180, 180)
-    test = data(c_s, length, a_s, dim, num, -180, 180)
+    test = data(dim, num, -180, 180)
     X_1 = test[1][:, :dim, :]
     real_angles_deg = np.rad2deg(test[2][:, 0])
     p = model1.predict(X_1)
@@ -321,8 +315,7 @@ def STEREO_check(model1, dim, num, min_angle, max_angle):
     x-axis: values of shape 1's angle
     y-axis: predicted stereo angle'''
     # generate test data
-    c_s, length, a_s = data_vars(dim, num, -180, 180)
-    test = data(c_s, length, a_s, dim, num, -180, 180)
+    test = data(dim, num, -180, 180)
     X_1 = test[1][:, :dim, :]
     Y_1 = test[1][:, dim:, :]
     real_angles_deg = np.rad2deg(test[2][:, 1])
@@ -374,38 +367,27 @@ def show_shapes(dim, dataset, num):
 
 stereo_CHEAT, cnn_CHEAT = STEREO_CHEAT(dim, num)
 cnn_CHEAT.compile(optimizer=opt, loss="mse")
-num = 2048
-epochs = [45,45,90,90]
-for k in [45, 90, 135, 180]:
+
+for k in [45,90,135,180]:
     amin = -k
     amax = k
-    i = int(round(k/45))
-    c_s, length, a_s = data_vars(dim, num, amin, amax)
-    # k=a_s[:,0].argsort()
-    # c_s = c_s[k, ...]
-    # length = length[k, ...]
-    # a_s = a_s[k, ...]
-    cheat_data = data(c_s, length, a_s, dim, num, amin, amax)
+    
+    cheat_data = data(dim, 2048, amin, amax)
     v1 = cheat_data[1][:, :dim, :]  # proj1
     v2 = cheat_data[1][:, dim:, :]  # proj2
     w1 = cheat_data[2][:, 0]  # real angles shape 1
     ster = cheat_data[2][:, 1] - cheat_data[2][:, 0]  # stereoangles
-    history0 = cnn_CHEAT.fit(x=v1, y=w1, epochs=45, batch_size=batch_size)
+    history0 = cnn_CHEAT.fit(x=v1, y=w1, epochs=10, batch_size=batch_size)
     plt.plot(history0.history['loss'])
     plt.show()
     CNN_check(cnn_CHEAT, dim, 1024, amin, amax)
-
-
 
 k=w1.argsort()
 v1s = v1[k, ...]
 w1s = w1[k, ...]
 plt.plot(w1s[::10])
 plt.matshow(v1s[::10,:,0].T)
-
-
-
-
+k=w1.argsort()
 # stereo_CHEAT.compile(optimizer=opt, loss="mse")
 # history1 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=10, batch_size=batch_size)
 # plt.plot(history1.history['loss'])
@@ -431,8 +413,7 @@ stereo1d_model = keras.models.load_model('mask_trained4.keras')
 for i in range(len(min_angles)):
     min_angle = min_angles[i]
     max_angle = max_angles[i]
-    c_s, length, a_s = data_vars(dim, num, min_angle, max_angle)
-    train = data(c_s, length, a_s, dim, num[i], min_angle, max_angle)
+    train = data(dim, num[i], min_angle, max_angle)
 
     # data
     X_1 = train[1][:, :dim, :]  # proj1
