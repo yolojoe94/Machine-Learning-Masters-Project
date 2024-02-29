@@ -215,7 +215,7 @@ def STEREO_1d_model(dim, num):
     add = Dense(1, activation=None, use_bias=False, trainable=False,
                 kernel_initializer=keras.initializers.Constant(value=1.0), name="stereo_out")(add)
 
-    stereo_model = Model(inputs=[inputs_st1, inputs_st2], outputs=sub)
+    stereo_model = Model(inputs=[inputs_st1, inputs_st2], outputs=add)
     stereo_model.summary()
 
     return stereo_model, cnn_1d_model
@@ -225,7 +225,7 @@ def STEREO_CHEAT(dim, num):
     '''takes TWO IMAGES
     CHEATS TO GET THIER ANGLES
     SUBTRACTS THEM TO FIND STEREO ANGLE'''
-    cnn_CHEAT = CNN_CHEAT(dim)
+    # cnn_CHEAT = CNN_CHEAT(dim)
     inputs_st1 = Input(shape=(dim, 1))
     inputs_st2 = Input(shape=(dim, 1))
     # calculate angles of shape 1&2
@@ -248,17 +248,24 @@ def STEREO_CHEAT(dim, num):
     add = Dense(1, activation=None, use_bias=False, trainable=False,
                 kernel_initializer=keras.initializers.Constant(value=1.0), name="stereo_out")(add)
 
-    stereo_CHEAT = Model(inputs=[inputs_st1, inputs_st2], outputs=sub)
+    stereo_CHEAT = Model(inputs=[inputs_st1, inputs_st2], outputs=add)
     stereo_CHEAT.summary()
     return stereo_CHEAT, cnn_CHEAT
 
 
-dim, num, min_angle, max_angle, batch_size, epochs = 64, 16384, 0, 360, 64, 200
-opt = keras.optimizers.Adam(learning_rate=0.01)
+dim, num, min_angle, max_angle, batch_size, epochs = 64, 16384, 0, 360, 16, 200
+opt = keras.optimizers.Adam(learning_rate=0.0005)
 
-c_s, length, a_s = data_vars(dim, num, min_angle, max_angle)
-start_data = data(c_s, length, a_s, dim, num, min_angle, max_angle)
-
+def create_data(dim, num, min_angle, max_angle):
+    if os.path.exists('temp.npy'):
+        d = np.load('temp.npy')
+        dim1, num1, min_angle1, max_angle1, start_data = d
+        if (dim1, num1, min_angle1, max_angle1) == (dim, num, min_angle, max_angle):
+            return start_data
+    c_s, length, a_s = data_vars(dim, num, min_angle, max_angle)
+    start_data = data(c_s, length, a_s, dim, num, min_angle, max_angle)
+    np.save('temp.npy', (dim, num, min_angle, max_angle, start_data))
+    return start_data
 
 def MASK(dataset):
     '''make a mask for a given dataset'''
@@ -337,9 +344,10 @@ def STEREO_check(model1, dim, num, min_angle, max_angle):
     real_angles_deg = np.rad2deg(test[2][:, 1])
     p = model1.predict([X_1, Y_1]).T
     # scatter the results
-    plt.scatter(real_angles_deg, np.rad2deg(p))
+    plt.scatter(real_angles_deg, np.rad2deg(p), s=5)
     plt.vlines(min_angle, 0, 20, 'b')
     plt.vlines(max_angle, 0, 20, 'b')
+    plt.hlines(10, -180, 180, 'g')
     plt.grid()
     plt.xlabel('Actual Values of shape 1')
     plt.ylabel('Stereo Angle Prediction')
@@ -378,7 +386,7 @@ def show_shapes(dim, dataset, num, inds=None):
 stereo_CHEAT, cnn_CHEAT = STEREO_CHEAT(dim, num)
 cnn_CHEAT.compile(optimizer=opt, loss="mse")
 num = 2048
-epochs=[100,130,130,150,200,200]
+epochs=np.array([100,130,130,150,200,200])//4
 for j, k in enumerate([45,90,110,135,155,180]):
     amin = -k
     amax = k
@@ -398,7 +406,9 @@ for j, k in enumerate([45,90,110,135,155,180]):
     plt.show()
     CNN_check(cnn_CHEAT, dim, 1024, amin, amax)
 
-
+stereo_CHEAT.compile(optimizer=opt, loss="mse")
+STEREO_check(stereo_CHEAT, dim, 2048, -180, 180)
+history0 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=5, batch_size=batch_size)
 
 k=w1.argsort()
 v1s = v1[k, ...]
@@ -416,8 +426,8 @@ start_data = data(c_s, length, a_s, dim, 360, 0, 360)
 
 for a in range(360):
     s[a, :] = start_data[1][a, :64, 0]
-plt.matshow(s, extent=[0, 64, -180, 180])
-plt.vlines(32,-180, 180)
+plt.matshow(s.T, extent=[-180, 180, 0, 64])
+plt.hlines(32,-180, 180)
 plt.show()
 
 inds=[]
