@@ -383,6 +383,22 @@ def show_shapes(dim, dataset, num, inds=None):
 
 # show_shapes(dim, start_data, num)
 
+def show_stereo_2d(dim, dataset, num, inds=None):
+    Z_1 = dataset[0][:, :dim, :, :]  # img1
+    Z_2 = dataset[0][:, dim:, :, :]  # img2
+    b = dataset[2][:, 2] #angles degrees
+    if inds is None:
+        inds = np.random.randint(0, num, (3))
+    fig, axs = plt.subplots(2, len(inds))
+    fig.suptitle(f'IMG_model, max_angle={max_angle}')
+    for k, i in enumerate(inds):
+        axs[0, k].imshow(Z_1[i], cmap='gray')
+        axs[1, k].imshow(Z_2[i], cmap='gray')
+    plt.yticks([])
+    plt.show()
+
+#show_stereo_2d(dim, cheat_data, num, inds)
+
 stereo_CHEAT, cnn_CHEAT = STEREO_CHEAT(dim, num)
 cnn_CHEAT.compile(optimizer=opt, loss="mse")
 num = 2048
