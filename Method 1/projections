@@ -384,6 +384,19 @@ def show_shapes(dim, dataset, num, inds=None):
 
 # show_shapes(dim, start_data, num)
 
+def show_stereo_2d(dim, dataset, num, inds=None):
+    Z_1 = dataset[0][:, :dim, :, :]  # img1
+    Z_2 = dataset[0][:, dim:, :, :]  # img2
+    b = dataset[2][:, 2] #angles degrees
+    if inds is None:
+        inds = np.random.randint(0, num, (3))
+    fig, axs = plt.subplots(2, len(inds))
+    fig.suptitle(f'IMG_model, max_angle={max_angle}')
+    for k, i in enumerate(inds):
+        axs[0, k].imshow(Z_1[i], cmap='gray')
+        axs[1, k].imshow(Z_2[i], cmap='gray')
+    plt.yticks([])
+    plt.show()
 
 cnn_CHEAT = CNN_CHEAT(dim)
 stereo_CHEAT, cnn_CHEAT = STEREO_CHEAT(cnn_CHEAT, dim, num)
@@ -447,8 +460,10 @@ a_s[np.arange(360), np.zeros(360, int)] = np.deg2rad(np.arange(360)-180)
 a_s[np.arange(360), np.ones(360, int)] = np.deg2rad(np.arange(360)-180)
 start_data = data(c_s, length, a_s, dim, 360, 0, 360)
 
+d = np.arange(-32,32)
 for a in range(360):
-    s[a, :] = start_data[1][a, :64, 0]
+    p = start_data[1][a, :64, 0]
+    s[a, :] = p
 plt.matshow(s.T, extent=[-180, 180, 0, 64])
 plt.hlines(32,-180, 180)
 plt.show()
@@ -466,6 +481,25 @@ show_shapes(dim, cheat_data, num)
 
 stereo1d_model, cnn1d_model = STEREO_1d_model(dim, num)
 keras.utils.plot_model(stereo1d_model, show_shapes=True)
+
+show_stereo_2d(dim, cheat_data, num, inds)
+
+x = np.linspace(0,360,361)
+s = np.sin(np.deg2rad(4*x))
+c = np.cos(np.deg2rad(4*x))
+plt.plot(x, s)
+plt.plot(x,c)
+plt.title('sine and cosine of 4x')
+plt.xlabel('orientation in degrees')
+plt.grid()
+plt.show()
+
+from skimage.transform import iradon, iradon_sart
+r = iradon(s.T, np.rad2deg(a_s[:,0]))
+plt.matshow(r)
+
+r = iradon_sart(s[::15, :].T, np.rad2deg(a_s[::15,0]))
+plt.matshow(r)
 
 # def show_stereo_2d(dim, dataset, num, inds=None):
 #     Z_1 = dataset[0][:, :dim, :, :]  # img1
