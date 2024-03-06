@@ -221,7 +221,7 @@ def STEREO_1d_model(dim, num):
     return stereo_model, cnn_1d_model
 
 
-def STEREO_CHEAT(dim, num):
+def STEREO_CHEAT(model, dim, num):
     '''takes TWO IMAGES
     CHEATS TO GET THIER ANGLES
     SUBTRACTS THEM TO FIND STEREO ANGLE'''
@@ -229,8 +229,8 @@ def STEREO_CHEAT(dim, num):
     inputs_st1 = Input(shape=(dim, 1))
     inputs_st2 = Input(shape=(dim, 1))
     # calculate angles of shape 1&2
-    c1 = cnn_CHEAT(inputs_st1)
-    c2 = cnn_CHEAT(inputs_st2)
+    c1 = model(inputs_st1)
+    c2 = model(inputs_st2)
     # difference in angle
     sub = tfm.subtract(c2, c1)
     # find index of lowest angle
@@ -254,7 +254,7 @@ def STEREO_CHEAT(dim, num):
 
 
 dim, num, min_angle, max_angle, batch_size, epochs = 64, 16384, 0, 360, 16, 200
-opt = keras.optimizers.Adam(learning_rate=0.0005)
+opt = keras.optimizers.Adam(learning_rate=0.01)
 
 def create_data(dim, num, min_angle, max_angle):
     if os.path.exists('temp.npy'):
@@ -319,9 +319,9 @@ def CNN_check(model1, dim, num, min_angle, max_angle):
     p = model1.predict(X_1)
     print(p.shape)
     print(real_angles_deg.shape)
-    plt.vlines(min_angle, np.min(np.rad2deg(p)), np.max(np.rad2deg(p)), 'b')
-    plt.vlines(max_angle, np.min(np.rad2deg(p)), np.max(np.rad2deg(p)), 'b')
-    plt.plot([min_angle, max_angle], [min_angle, max_angle], 'r-')
+    plt.vlines(min_angle, np.min(np.rad2deg(p)), np.max(np.rad2deg(p)), 'b', label='min')
+    plt.vlines(max_angle, np.min(np.rad2deg(p)), np.max(np.rad2deg(p)), 'b', label='max')
+    plt.plot([min_angle, max_angle], [min_angle, max_angle], 'r-', label='line of hope')
     # p = np.rad2deg(np.arctan2(p[:,0], p[:,1]))
     # scatter the results
     plt.scatter(real_angles_deg, np.rad2deg(p))
@@ -378,53 +378,60 @@ def show_shapes(dim, dataset, num, inds=None):
         axs[0, k].title.set_text(f'{round(b[i])}')
         axs[0, k].set_yticklabels([])
         axs[1, k].imshow(Z_1[i], cmap='gray')
+        axs[1, k].set_yticklabels([])
     plt.yticks([])
     plt.show()
 
 # show_shapes(dim, start_data, num)
 
-def show_stereo_2d(dim, dataset, num, inds=None):
-    Z_1 = dataset[0][:, :dim, :, :]  # img1
-    Z_2 = dataset[0][:, dim:, :, :]  # img2
-    b = dataset[2][:, 2] #angles degrees
-    if inds is None:
-        inds = np.random.randint(0, num, (3))
-    fig, axs = plt.subplots(2, len(inds))
-    fig.suptitle(f'IMG_model, max_angle={max_angle}')
-    for k, i in enumerate(inds):
-        axs[0, k].imshow(Z_1[i], cmap='gray')
-        axs[1, k].imshow(Z_2[i], cmap='gray')
-    plt.yticks([])
-    plt.show()
 
-#show_stereo_2d(dim, cheat_data, num, inds)
-
-stereo_CHEAT, cnn_CHEAT = STEREO_CHEAT(dim, num)
+cnn_CHEAT = CNN_CHEAT(dim)
+stereo_CHEAT, cnn_CHEAT = STEREO_CHEAT(cnn_CHEAT, dim, num)
 cnn_CHEAT.compile(optimizer=opt, loss="mse")
 num = 2048
-epochs=np.array([100,130,130,150,200,200])//4
-for j, k in enumerate([45,90,110,135,155,180]):
-    amin = -k
-    amax = k
-    i = int(round(k/45))
-    c_s, length, a_s = data_vars(dim, num, amin, amax)
-    # k=a_s[:,0].argsort()
-    # c_s = c_s[k, ...]
-    # length = length[k, ...]
-    # a_s = a_s[k, ...]
-    cheat_data = data(c_s, length, a_s, dim, num, amin, amax)
-    v1 = cheat_data[1][:, :dim, :]  # proj1
-    v2 = cheat_data[1][:, dim:, :]  # proj2
-    w1 = cheat_data[2][:, 0]  # real angles shape 1
-    ster = cheat_data[2][:, 1] - cheat_data[2][:, 0]  # stereoangles
-    history0 = cnn_CHEAT.fit(x=v1, y=w1, epochs=epochs[j], batch_size=batch_size)
-    plt.plot(history0.history['loss'])
-    plt.show()
-    CNN_check(cnn_CHEAT, dim, 1024, amin, amax)
+def run(epochs, angs):
+    for j, k in enumerate(angs):
+        amin = -k
+        amax = k
+        c_s, length, a_s = data_vars(dim, num, amin, amax)
+        # k=a_s[:,0].argsort()
+        # c_s = c_s[k, ...]
+        # length = length[k, ...]
+        # a_s = a_s[k, ...]
+        cheat_data = data(c_s, length, a_s, dim, num, amin, amax)
+        v1 = cheat_data[1][:, :dim, :]  # proj1
+        v2 = cheat_data[1][:, dim:, :]  # proj2
+        w1 = cheat_data[2][:, 0]  # real angles shape 1
+        ster = cheat_data[2][:, 1] - cheat_data[2][:, 0]  # stereoangles
+        history0 = cnn_CHEAT.fit(x=v1, y=w1, epochs=epochs[j], batch_size=batch_size)
+        plt.plot(history0.history['loss'])
+        plt.show()
+        CNN_check(cnn_CHEAT, dim, 1024, amin, amax)
+    return w1, v1, cheat_data
+
+epochs=np.array([75,100,100])
+angs = [45,90,110]
+w1, v1, cheat_data = run(epochs, angs)
+epochs=np.array([100,150])
+angs = [135,155]
+opt = keras.optimizers.Adam(learning_rate=0.0005)
+cnn_CHEAT.compile(optimizer=opt, loss="mse")
+w1, v1, cheat_data = run(epochs, angs)
+epochs=np.array([150])
+angs = [180]
+opt = keras.optimizers.Adam(learning_rate=0.00005)
+cnn_CHEAT.compile(optimizer=opt, loss="mse")
+w1, v1, cheat_data = run(epochs, angs)
+# num=1024
+# epochs=np.array([1])
+# angs = [180]
+# opt = keras.optimizers.Adam(learning_rate=0.0005)
+# cnn_CHEAT.compile(optimizer=opt, loss="mse")
+# w1, v1, cheat_data = run(epochs, angs)
 
 stereo_CHEAT.compile(optimizer=opt, loss="mse")
 STEREO_check(stereo_CHEAT, dim, 2048, -180, 180)
-history0 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=5, batch_size=batch_size)
+# history0 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=5, batch_size=batch_size)
 
 k=w1.argsort()
 v1s = v1[k, ...]
@@ -447,17 +454,40 @@ plt.hlines(32,-180, 180)
 plt.show()
 
 inds=[]
-ang=40
-for i in range(7):
-    inds.append(np.argmin((w1-np.deg2rad(ang+(i-3)*3))**2))
+ang=0
+for i in range(3):
+    inds.append(np.argmin((w1-np.deg2rad(ang+(i*(-1)**i)*45))**2))
 show_shapes(dim, cheat_data, num, inds)
 
-i1 = np.argmin((w1-np.deg2rad(65))**2)
-i2 = np.argmin((w1-np.deg2rad(70))**2)
+i1 = np.argmin((w1-np.deg2rad(5))**2)
+i2 = np.argmin((w1-np.deg2rad(10))**2)
 i3 = np.argmin((w1-np.deg2rad(75))**2)
 show_shapes(dim, cheat_data, num)
 
+stereo1d_model, cnn1d_model = STEREO_1d_model(dim, num)
+keras.utils.plot_model(stereo1d_model, show_shapes=True)
 
+# def show_stereo_2d(dim, dataset, num, inds=None):
+#     Z_1 = dataset[0][:, :dim, :, :]  # img1
+#     Z_2 = dataset[0][:, dim:, :, :]  # img2
+#     b = dataset[1][:, 2] #angles degrees
+#     if inds is None:
+#         inds = np.random.randint(0, num, (3))
+#     fig, axs = plt.subplots(2, len(inds))
+#     fig.suptitle(f'IMG_model, max_angle={max_angle}')
+#     for k, i in enumerate(inds):
+#         axs[0, k].imshow(Z_1[i], cmap='gray')
+#         axs[1, k].imshow(Z_2[i], cmap='gray')
+#         # axs[0, k].set_yticklabels([])
+#         # axs[1, k].set_yticklabels([])
+#     plt.yticks([])
+#     plt.rcParams['figure.dpi'] = 300
+#     plt.show()
+
+
+# from assumed_sym import data
+# from assumed_sym import inside_square
+# show_stereo_2d(dim, data(64, num, 360), num, [i1,i2])
 
 # stereo_CHEAT.compile(optimizer=opt, loss="mse")
 # history1 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=10, batch_size=batch_size)
