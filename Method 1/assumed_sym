@@ -12,10 +12,9 @@ from scipy.ndimage import gaussian_filter
 
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, Dropout, BatchNormalization
-from tensorflow.keras.layers import concatenate, Input
-from tensorflow.keras.initializers import Constant
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, Dropout
+from tensorflow.keras.layers import Input
 # from tensorflow.math import subtract
 import tensorflow.math as tfm
 import os
@@ -33,7 +32,6 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 gamma_glob = None
 
-opt = keras.optimizers.Adam(learning_rate=0.01)
 
 
 def grid2d(size):
@@ -79,10 +77,10 @@ def data(dim, num, max_angle):
     c_s = np.zeros((num,2))
                       
     '''these are randomised start values for the shapes'''
-    xcs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2).round(1)*0+dim/2
-    ycs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2).round(1)*0+dim/2
-    length = ((np.random.rand(num)+1)*dim/4).round(1)
-    length[:] = dim/2
+    xcs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2)*0 + 3*dim/8
+    ycs = ((np.random.rand(num)-0.5)*2*dim/4 + dim/2)*0 + dim/2
+    length = ((np.random.rand(num)-0.5)*dim/4 + 5*dim/8)/1.2
+    # length[:] = dim/2
     #this 0, 90 defines the angular range of results
     a1 = (np.random.uniform(0, max_angle, num))#in degrees
     a2 = a1+10
@@ -126,7 +124,7 @@ def CNN_model(dim):
     x = Flatten()(x)
     x = Dense(16, activation='relu')(x)
     outputs = Dense(2, activation='linear')(x)
-    model = Model(inputs=inputs, outputs=outputs)
+    model = Model(inputs=inputs, outputs=outputs, name='cnn')
     model.summary()
     return model
 
@@ -136,10 +134,6 @@ def STEREO_model(dim,  num, batch_size, epochs):
     in theory: it takes correct angles from both shapes and only returns shape two,
     this means you can give it a 0&unknown angle pair to get the unknowns,
     it is accurate on both as the same CNN is trained on each of images 1&2'''
-  
-    
-    # cnn1 = keras.models.load_model(f'cnn1_fnct_mdl_num{num}_bs{batch_size}_epochs{epochs}.keras')
-    '''first of above trains without pretrained cnn, second uses pretrained(to recognise angles)'''
    
     cnn_model = CNN_model(dim)
     
@@ -159,7 +153,7 @@ def STEREO_model(dim,  num, batch_size, epochs):
     cs = tf.concat([tfm.subtract(angle1, tf.constant(6.2831853/2)),angle2],1)
     x = tfm.argmin(cs, output_type = tf.dtypes.int32, axis = 1)
     x = tf.reshape(x, [-1,1])
-    #multiply 2pi by index: = {0; if 1 is smaller, 1; if 2 is larger}
+    #multiply 2pi(=4*90) by index: = {0; if 1 is smaller, 2pi; if 1 is larger}
     y = tfm.multiply(tf.constant(6.2831853), tf.cast(x, dtype = tf.dtypes.float32))
     y = tf.reshape(y, [-1,1])
     #add 2pi if sub was negative
@@ -168,12 +162,12 @@ def STEREO_model(dim,  num, batch_size, epochs):
     add = Dense(1, activation=None, use_bias=False, trainable=False,
               kernel_initializer=keras.initializers.Constant(value=1.0), name="stereo_out")(add)
         
-    stereo_model = Model(inputs=[inputs_st1, inputs_st2], outputs=[add, angle1, angle2])
+    stereo_model = Model(inputs=[inputs_st1, inputs_st2], outputs=add, name='stereo')
     stereo_model.summary()
     
     return stereo_model, cnn_model
 
-def scatter_validation(model1, dim, num, max_angle, batch_size, epochs, trial):
+def scatter_validation(model1, model2, dim, num, max_angle, batch_size, epochs, trial):
     '''take range of inputs and produce graph of them vs predicitons from a model
     y-axis: values of shape 1's angle
     x-axis: predicted angular separation
@@ -185,10 +179,10 @@ def scatter_validation(model1, dim, num, max_angle, batch_size, epochs, trial):
     X_st2 = test[0][:, dim:, :, :]
     X_test = [X_st1, X_st2]
     p = model1.predict(X_test)
-    y_prediction = np.reshape(p[0], -1)
+    y_prediction = np.reshape(p, -1)
     
     #scatter the results
-    plt.scatter(test[1][:,2], np.rad2deg(y_prediction))
+    plt.scatter(test[1][:,2], np.rad2deg(y_prediction)/4)
     # plt.ylim(0)
     plt.grid()
     plt.xlabel('Actual Values of shape 1')
@@ -199,38 +193,39 @@ def scatter_validation(model1, dim, num, max_angle, batch_size, epochs, trial):
     #     verticalalignment='top')
     # plt.savefig(f'fnct_mdl_SCATTER_num{num}_bs{batch_size}_epochs{epochs}')
     plt.show()
-    angle_pred = np.reshape(p[1], -1)
-    angle2_pred = np.reshape(p[2], -1)
+    p1 = model2.predict(X_st1) #sin(4x), cos(4x)
+    p2 = model2.predict(X_st2)
+    p1 = np.arctan2(p1[:, 0], p1[:, 1]) #(4x)
+    p2 = np.arctan2(p2[:, 0], p2[:, 1])
+    angle1_pred = np.reshape(p1, -1)
+    angle2_pred = np.reshape(p2, -1)
     #scatter the results
     #divide by 4 to account for sym=4 entending the graph
-    plt.scatter(test[1][:,2], np.rad2deg(angle_pred)/4, c='blue')
-    plt.scatter(test[1][:,2], np.rad2deg(angle2_pred)/4, c='orange')
+    plt.scatter(test[1][:,2], np.rad2deg(angle1_pred)/4, c='blue', label='shape 1') #(x)
+    plt.scatter(test[1][:,2], np.rad2deg(angle2_pred)/4, c='orange', label='shape 2')
     # ax2.scatter(test[1][:,2], gamma_pred, c='green')
     plt.grid()
+    plt.legend()
+    plt.xlabel('Actual Values of shapes')
+    plt.ylabel('Angle prediction of \nShapes 1&2')
+    plt.show()
+    '''try to remove offset'''
+    plt.scatter(test[1][:,2], np.rad2deg(angle1_pred - angle1_pred[np.argmin(test[1][:,2])])/4, c='blue', label='shape 1') #(x)
+    plt.scatter(test[1][:,2], np.rad2deg(angle2_pred - angle1_pred[np.argmin(test[1][:,2])])/4, c='orange', label='shape 2')
+    # ax2.scatter(test[1][:,2], gamma_pred, c='green')
+    plt.grid()
+    plt.legend()
     plt.xlabel('Actual Values of shapes')
     plt.ylabel('Angle prediction of \nShapes 1&2')
     plt.show()
 
-def custom_loss_function(y_true, y_pred):
-    dif = y_true - y_pred
-    #25 corresponds to 5^2 degree difference, any angle_dif>5
-    #this 25 value can be tuned for optimal effect
-    tensor = tf.constant(25, shape = y_true.shape, dtype = tf.float32)
-    squared_dif = tf.square((y_true - y_pred))#[tfm.abs(dif)<1])
-    min_dif = tfm.minimum(tensor, squared_dif)
-    return tf.reduce_mean(min_dif, axis=-1)
-
-dim, num, max_angle, batch_size, epochs = 64, 1024, 360, 64, 30
 
 
-stereo_model, cnn1_model = STEREO_model(dim, num, batch_size, epochs)
-
-sym = 4
 '''programmatically find the right integer value
 start 1d projections with a chiral (pro-chiral in literature) shape like "L"
 this stops the extra symmetry being a nuisance 
 then try with non-chiral shapes that have a line of symmetry but no rotational symmetries'''
-
+'''
 #construct data
 train = data(dim, num, max_angle)
 X_g = np.ones((num, 1))
@@ -238,12 +233,15 @@ X_st1 = train[0][:, :dim, :, :]  # [:train_size]
 X_st2 = train[0][:, dim:, :, :]  #[:train_size]
 X_train = [X_st1, X_st2]
 Y = train[1]
-a = train[1][:, 0]
+a1 = train[1][:, 0]
 # Y_st1 = np.array([np.cos(a), np.sin(a)]).T
-Y_st1 = np.array([np.sin(sym*a), np.cos(sym*a)]).T
+Y_st1 = np.array([np.sin(sym*a1), np.cos(sym*a1)]).T
+
+opt = keras.optimizers.Adam(learning_rate=0.01)
 
 #train model
 cnn1_model.compile(optimizer=opt, loss="mse")
+cnn1_model.save_weights('model.h5')
 history = cnn1_model.fit(x=X_st1, y=Y_st1, epochs=20, batch_size=batch_size)
 
 plt.plot(history.history["loss"])
@@ -254,40 +252,63 @@ plt.show()
 #take differences of two angles
 Y_train = [(Y[:,1]-Y[:,0])*sym, np.ones(num), np.ones(num)] 
 
+
+stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
+
+#Training stero_model
+history1 = stereo_model.fit(x=X_train, y=Y_train[0], epochs=20, batch_size=batch_size)
+
+
+#graph guesses at sep_angle
+scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
+
+cnn1_model.load_weights('model.h5')
+opt = keras.optimizers.Adam(learning_rate=0.0001)
+stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
+
+history2 = stereo_model.fit(x=X_train, y=Y_train[0], epochs=2, batch_size=batch_size)
+
+scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
+
+plt.plot(history2.history["loss"])
+plt.yscale("log")
+plt.title('STEREO')
+plt.show()
+'''
+
+dim, num, max_angle, batch_size, epochs = 64, 4*1024, 60, 64, 5
+sym = 4
+stereo_model, cnn1_model = STEREO_model(dim, num, batch_size, epochs)
+opt = keras.optimizers.Adam(learning_rate=0.01)
 losses = {"stereo_out": "mse"}
 lossWeights = {"stereo_out": 1.0}
 stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
 
-#check if stereo_model is guessing well
-a = stereo_model.predict(X_train)
-d = (a[2]-a[1]).flatten()
-c = a[0].flatten()
-plt.plot(d, c, '.')
-plt.title('stereo_model vs angle2-angle1')
+h = []
+
+for amax in [60, 120, 180, 270, 360]:
+    dim, num, max_angle, batch_size, epochs = 64, 4*1024, amax, 64, 8
+    #construct data
+    train = data(dim, num, max_angle)
+    X_st1 = train[0][:, :dim, :, :]  # [:train_size]
+    X_st2 = train[0][:, dim:, :, :]  #[:train_size]
+    X_train = [X_st1, X_st2]
+    Y = train[1]
+    Y_train = (Y[:,1]-Y[:,0])*sym
+    
+    history2 = stereo_model.fit(x=X_train, y=Y_train, epochs=epochs, batch_size=batch_size)
+    h.append(history2.history)  
+
+    scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
+
+    plt.plot(history2.history["loss"])
+    plt.yscale("log")
+    plt.title('STEREO')
+    plt.show()
+
+ 
+
+plt.plot(np.array([he['loss'] for he in h]).flatten())
+plt.yscale("log")
+plt.title('STEREO')
 plt.show()
-
-plt.plot(a[2].flatten(), '.')
-plt.show()
-# assert False
-
-#Training stero_model
-# history = stereo_model.fit(x=X_train, y=Y_train, epochs=epochs, batch_size=batch_size)
-
-# plt.plot(history.history["loss"])
-# plt.yscale("log")
-# plt.show()
-
-#check if stereo_model is guessing well
-a = stereo_model.predict(X_train)
-d = (a[2]-a[1]).flatten()
-c = a[0].flatten()
-plt.plot(d, c, '.')
-plt.title('stereo_model vs angle2-angle1')
-plt.show()
-
-
-# gout_layer = tf.keras.models.Model(inputs=stereo_model.input, outputs=stereo_model.get_layer('mod').output)
-
-
-#graph guesses at sep_angle
-scatter_validation(stereo_model, dim, num, max_angle, batch_size, epochs, 'false')
