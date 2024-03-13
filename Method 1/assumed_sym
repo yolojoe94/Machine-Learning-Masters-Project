@@ -180,103 +180,49 @@ def scatter_validation(model1, model2, dim, num, max_angle, batch_size, epochs, 
     X_test = [X_st1, X_st2]
     p = model1.predict(X_test)
     y_prediction = np.reshape(p, -1)
-    
-    #scatter the results
     plt.scatter(test[1][:,2], np.rad2deg(y_prediction)/4)
-    # plt.ylim(0)
     plt.grid()
     plt.xlabel('Actual Values of shape 1')
     plt.ylabel('Separation prediction')
-    # plt.text(0.12, 2,
-    #          f'trial = {trial}\nbatch_size = {batch_size} \nepochs = {epochs}',
-    #          fontsize=14,
-    #     verticalalignment='top')
-    # plt.savefig(f'fnct_mdl_SCATTER_num{num}_bs{batch_size}_epochs{epochs}')
     plt.show()
+    
     p1 = model2.predict(X_st1) #sin(4x), cos(4x)
     p2 = model2.predict(X_st2)
     p1 = np.arctan2(p1[:, 0], p1[:, 1]) #(4x)
     p2 = np.arctan2(p2[:, 0], p2[:, 1])
     angle1_pred = np.reshape(p1, -1)
     angle2_pred = np.reshape(p2, -1)
-    #scatter the results
     #divide by 4 to account for sym=4 entending the graph
     plt.scatter(test[1][:,2], np.rad2deg(angle1_pred)/4, c='blue', label='shape 1') #(x)
     plt.scatter(test[1][:,2], np.rad2deg(angle2_pred)/4, c='orange', label='shape 2')
-    # ax2.scatter(test[1][:,2], gamma_pred, c='green')
     plt.grid()
     plt.legend()
     plt.xlabel('Actual Values of shapes')
     plt.ylabel('Angle prediction of \nShapes 1&2')
     plt.show()
-    '''try to remove offset'''
-    plt.scatter(test[1][:,2], np.rad2deg(angle1_pred - angle1_pred[np.argmin(test[1][:,2])])/4, c='blue', label='shape 1') #(x)
-    plt.scatter(test[1][:,2], np.rad2deg(angle2_pred - angle1_pred[np.argmin(test[1][:,2])])/4, c='orange', label='shape 2')
-    # ax2.scatter(test[1][:,2], gamma_pred, c='green')
-    plt.grid()
-    plt.legend()
-    plt.xlabel('Actual Values of shapes')
-    plt.ylabel('Angle prediction of \nShapes 1&2')
-    plt.show()
-
-
+    ang1_deg = np.rad2deg(angle1_pred)/4
+    #sort preds and truths
+    # sorted_angs = np.array([x for _, x in sorted(zip(test[1][:,2], ang1_deg), key=lambda pair: pair[0])])
+    # sorted_truths = np.array([_ for _, x in sorted(zip(test[1][:,2], ang1_deg), key=lambda pair: pair[0])])
+    # #find values where discontinuous
+    # b1 = (sorted_truths[1:])[(sorted_angs[1:]-sorted_angs[:-1])<-25]
+    # b2 = (sorted_truths[1:])[(sorted_angs[1:]-sorted_angs[:-1])>25]
+    # b1 = np.append(b1, 360*2)
+    # bounds=[]
+    # for i in range(len(b1)-1):
+    #     if b1[i]<b1[i+1]-10:
+    #         bounds.append(b1[i])
+    # if len(bounds) != 4:
+    #     print('bounds has failed')
+    # bounds.append(360)
+    
 
 '''programmatically find the right integer value
 start 1d projections with a chiral (pro-chiral in literature) shape like "L"
 this stops the extra symmetry being a nuisance 
 then try with non-chiral shapes that have a line of symmetry but no rotational symmetries'''
-'''
-#construct data
-train = data(dim, num, max_angle)
-X_g = np.ones((num, 1))
-X_st1 = train[0][:, :dim, :, :]  # [:train_size]
-X_st2 = train[0][:, dim:, :, :]  #[:train_size]
-X_train = [X_st1, X_st2]
-Y = train[1]
-a1 = train[1][:, 0]
-# Y_st1 = np.array([np.cos(a), np.sin(a)]).T
-Y_st1 = np.array([np.sin(sym*a1), np.cos(sym*a1)]).T
 
-opt = keras.optimizers.Adam(learning_rate=0.01)
-
-#train model
-cnn1_model.compile(optimizer=opt, loss="mse")
-cnn1_model.save_weights('model.h5')
-history = cnn1_model.fit(x=X_st1, y=Y_st1, epochs=20, batch_size=batch_size)
-
-plt.plot(history.history["loss"])
-plt.yscale("log")
-plt.title('CNN')
-plt.show()
-
-#take differences of two angles
-Y_train = [(Y[:,1]-Y[:,0])*sym, np.ones(num), np.ones(num)] 
-
-
-stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
-
-#Training stero_model
-history1 = stereo_model.fit(x=X_train, y=Y_train[0], epochs=20, batch_size=batch_size)
-
-
-#graph guesses at sep_angle
-scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
-
-cnn1_model.load_weights('model.h5')
-opt = keras.optimizers.Adam(learning_rate=0.0001)
-stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
-
-history2 = stereo_model.fit(x=X_train, y=Y_train[0], epochs=2, batch_size=batch_size)
-
-scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
-
-plt.plot(history2.history["loss"])
-plt.yscale("log")
-plt.title('STEREO')
-plt.show()
-'''
-
-dim, num, max_angle, batch_size, epochs = 64, 4*1024, 60, 64, 5
+dim, num, max_angle, batch_size, epochs = 64, 4*1024, 360, 64, 5
 sym = 4
 stereo_model, cnn1_model = STEREO_model(dim, num, batch_size, epochs)
 opt = keras.optimizers.Adam(learning_rate=0.01)
@@ -284,29 +230,33 @@ losses = {"stereo_out": "mse"}
 lossWeights = {"stereo_out": 1.0}
 stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
 
+#construct data
+train = data(dim, num, max_angle)
+X_g = np.ones((num, 1))
+X_st1 = train[0][:, :dim, :, :]
+X_st2 = train[0][:, dim:, :, :]
+Y = train[1]
+Y_train = (Y[:,1]-Y[:,0])*sym
+
+# pick a random image
+n = np.random.randint(0, num)
+# define a metric for image similarity
+diff = np.std(X_st1[:, :, :, 0] - X_st1[n, :, :, 0], axis=(1,2))
+plt.plot(Y[:,0]-Y[n,0], diff, '.')
+plt.show()
+
 h = []
 
-for amax in [60, 120, 180, 270, 360]:
-    dim, num, max_angle, batch_size, epochs = 64, 4*1024, amax, 64, 8
-    #construct data
-    train = data(dim, num, max_angle)
-    X_st1 = train[0][:, :dim, :, :]  # [:train_size]
-    X_st2 = train[0][:, dim:, :, :]  #[:train_size]
-    X_train = [X_st1, X_st2]
-    Y = train[1]
-    Y_train = (Y[:,1]-Y[:,0])*sym
-    
-    history2 = stereo_model.fit(x=X_train, y=Y_train, epochs=epochs, batch_size=batch_size)
+for sim in [0.2, 0.25, 0.3, 0.33, 100]:
+    history2 = stereo_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
+                                y=Y_train[diff<sim, ...], epochs=epochs, batch_size=batch_size)
     h.append(history2.history)  
-
     scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
 
     plt.plot(history2.history["loss"])
     plt.yscale("log")
     plt.title('STEREO')
     plt.show()
-
- 
 
 plt.plot(np.array([he['loss'] for he in h]).flatten())
 plt.yscale("log")
