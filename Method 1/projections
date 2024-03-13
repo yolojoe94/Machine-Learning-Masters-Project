@@ -154,9 +154,9 @@ def CNN_1d_model(dim):
     x = Dropout(0.1)(x)
     x = Flatten()(x)
     x = Dense(16, activation='relu')(x)
-    x = Dense(2, activation='linear')(x)
-    angle1 = tfm.atan2(x[:, 0], x[:, 1], name="angle1")
-    outputs = tf.reshape(angle1, [-1, 1])
+    outputs = Dense(2, activation='linear')(x)
+    # angle1 = tfm.atan2(x[:, 0], x[:, 1], name="angle1")
+    # outputs = tf.reshape(angle1, [-1, 1])
     model = Model(inputs=inputs, outputs=outputs)
     model.summary()
     return model
@@ -178,9 +178,9 @@ def CNN_CHEAT(dim):
     x = Dropout(0.1)(x)
     x = Flatten()(x)
     x = Dense(16, activation='relu')(x)
-    x = Dense(2, activation='linear')(x)
-    angle1 = tfm.atan2(x[:, 0], x[:, 1], name="angle1")
-    outputs = tf.reshape(angle1, [-1, 1])
+    outputs = Dense(2, activation='linear')(x)
+    # angle1 = tfm.atan2(x[:, 0], x[:, 1], name="angle1")
+    # outputs = tf.reshape(angle1, [-1, 1])
     model = Model(inputs=inputs, outputs=outputs)
     model.summary()
     return model
@@ -196,10 +196,14 @@ def STEREO_1d_model(dim, num):
     inputs_st1 = Input(shape=(dim, 1))
     inputs_st2 = Input(shape=(dim, 1))
     # calculate angles of shape 1&2
-    c1 = cnn_1d_model(inputs_st1)
-    c2 = cnn_1d_model(inputs_st2)
+    a1 = cnn_1d_model(inputs_st1)
+    a2 = cnn_1d_model(inputs_st2)
+    angle1 = tfm.atan2(a1[:, 0], a1[:, 1], name="angle1")
+    c1 = tf.reshape(angle1, [-1, 1])
+    angle2 = tfm.atan2(a2[:, 0], a2[:, 1], name="angle1")
+    c2 = tf.reshape(angle1, [-1, 1])
     # difference in angle
-    sub = tfm.subtract(c2, c1)
+    sub = tfm.subtract(a2, a1)
     # find index of lowest angle
     cs = tf.concat([c1, c2], 1)
     '''should this be argmin or argmax???'''
@@ -229,10 +233,14 @@ def STEREO_CHEAT(model, dim, num):
     inputs_st1 = Input(shape=(dim, 1))
     inputs_st2 = Input(shape=(dim, 1))
     # calculate angles of shape 1&2
-    c1 = model(inputs_st1)
-    c2 = model(inputs_st2)
+    a1 = cnn_CHEAT(inputs_st1)
+    a2 = cnn_CHEAT(inputs_st2)
+    angle1 = tfm.atan2(a1[:, 0], a1[:, 1], name="angle1")
+    c1 = tf.reshape(angle1, [-1, 1])
+    angle2 = tfm.atan2(a2[:, 0], a2[:, 1], name="angle1")
+    c2 = tf.reshape(angle1, [-1, 1])
     # difference in angle
-    sub = tfm.subtract(c2, c1)
+    sub = tfm.subtract(a2, a1)
     # find index of lowest angle
     cs = tf.concat([c1, c2], 1)
     '''should this be argmin or argmax???'''
@@ -252,10 +260,6 @@ def STEREO_CHEAT(model, dim, num):
     stereo_CHEAT.summary()
     return stereo_CHEAT, cnn_CHEAT
 
-
-dim, num, min_angle, max_angle, batch_size, epochs = 64, 16384, 0, 360, 16, 200
-opt = keras.optimizers.Adam(learning_rate=0.01)
-
 def create_data(dim, num, min_angle, max_angle):
     if os.path.exists('temp.npy'):
         d = np.load('temp.npy')
@@ -267,7 +271,7 @@ def create_data(dim, num, min_angle, max_angle):
     np.save('temp.npy', (dim, num, min_angle, max_angle, start_data))
     return start_data
 
-def MASK(dataset):
+def MASK(dim, dataset):
     '''make a mask for a given dataset'''
     # dataset=start_data
     u = np.arange(-32, 32)
@@ -292,7 +296,7 @@ def MASK(dataset):
     return np.where(mask == True)[0], np.min(real_angles_start_data[mask]), np.max(real_angles_start_data[mask])
 
 
-# mask, mask_min, mask_max = MASK(start_data)
+# mask, mask_min, mask_max = MASK(dim, start_data)
 # mn = np.rad2deg(mask_min)
 # mx = np.rad2deg(mask_max)
 
@@ -317,6 +321,7 @@ def CNN_check(model1, dim, num, min_angle, max_angle):
     X_1 = test[1][:, :dim, :]
     real_angles_deg = np.rad2deg(test[2][:, 0])
     p = model1.predict(X_1)
+    p = np.arctan2(p[:, 0], p[:, 1])
     print(p.shape)
     print(real_angles_deg.shape)
     plt.vlines(min_angle, np.min(np.rad2deg(p)), np.max(np.rad2deg(p)), 'b', label='min')
@@ -365,7 +370,7 @@ def STEREO_check(model1, dim, num, min_angle, max_angle):
 # stereo1d_model.save('mask_trained4.keras')
 
 
-def show_shapes(dim, dataset, num, inds=None):
+def show_shapes(dim, dataset, num, max_angle, inds=None):
     Z_1 = dataset[0][:, :dim, :, :]  # img1
     a = dataset[1][:, :dim, :]
     b = dataset[2][:, 2]
@@ -384,7 +389,7 @@ def show_shapes(dim, dataset, num, inds=None):
 
 # show_shapes(dim, start_data, num)
 
-def show_stereo_2d(dim, dataset, num, inds=None):
+def show_stereo_2d(dim, dataset, num, max_angle, inds=None):
     Z_1 = dataset[0][:, :dim, :, :]  # img1
     Z_2 = dataset[0][:, dim:, :, :]  # img2
     b = dataset[2][:, 2] #angles degrees
@@ -398,12 +403,20 @@ def show_stereo_2d(dim, dataset, num, inds=None):
     plt.yticks([])
     plt.show()
 
+dim, num, min_angle, max_angle, batch_size, epochs = 64, 16384, 0, 360, 16, 200
+opt = keras.optimizers.Adam(learning_rate=0.01)
+
 cnn_CHEAT = CNN_CHEAT(dim)
 stereo_CHEAT, cnn_CHEAT = STEREO_CHEAT(cnn_CHEAT, dim, num)
 cnn_CHEAT.compile(optimizer=opt, loss="mse")
+opts = np.array([0.01, 0.005, 0.005, 0.0005, 0.0005, 0.0001, 0.0001])
+epochs=np.array([100,130,131,170,190,220, 100])
+angs = [45,90,110,135,155,180, 180]
 num = 2048
-def run(epochs, angs):
+def run():
     for j, k in enumerate(angs):
+        opt = keras.optimizers.Adam(learning_rate=opts[j])
+        cnn_CHEAT.compile(optimizer=opt, loss="mse")
         amin = -k
         amax = k
         c_s, length, a_s = data_vars(dim, num, amin, amax)
@@ -415,26 +428,23 @@ def run(epochs, angs):
         v1 = cheat_data[1][:, :dim, :]  # proj1
         v2 = cheat_data[1][:, dim:, :]  # proj2
         w1 = cheat_data[2][:, 0]  # real angles shape 1
+        y1 = np.array([np.sin(w1), np.cos(w1)]).T
         ster = cheat_data[2][:, 1] - cheat_data[2][:, 0]  # stereoangles
-        history0 = cnn_CHEAT.fit(x=v1, y=w1, epochs=epochs[j], batch_size=batch_size)
+        history0 = cnn_CHEAT.fit(x=v1, y=y1, epochs=epochs[j], batch_size=batch_size)
         plt.plot(history0.history['loss'])
         plt.show()
         CNN_check(cnn_CHEAT, dim, 1024, amin, amax)
     return w1, v1, cheat_data
 
-epochs=np.array([75,100,100])
-angs = [45,90,110]
-w1, v1, cheat_data = run(epochs, angs)
-epochs=np.array([100,150])
-angs = [135,155]
-opt = keras.optimizers.Adam(learning_rate=0.0005)
-cnn_CHEAT.compile(optimizer=opt, loss="mse")
-w1, v1, cheat_data = run(epochs, angs)
-epochs=np.array([150])
+
+
+
+epochs = [40]
 angs = [180]
-opt = keras.optimizers.Adam(learning_rate=0.00005)
-cnn_CHEAT.compile(optimizer=opt, loss="mse")
-w1, v1, cheat_data = run(epochs, angs)
+opts = [0.000001]
+w1, v1, cheat_data = run()
+cnn_CHEAT.save('-180_180 pretty good 2.keras')
+
 # num=1024
 # epochs=np.array([1])
 # angs = [180]
@@ -444,13 +454,13 @@ w1, v1, cheat_data = run(epochs, angs)
 
 stereo_CHEAT.compile(optimizer=opt, loss="mse")
 STEREO_check(stereo_CHEAT, dim, 2048, -180, 180)
-# history0 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=5, batch_size=batch_size)
+# history1 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=5, batch_size=batch_size)
 
 k=w1.argsort()
 v1s = v1[k, ...]
 w1s = w1[k, ...]
 plt.matshow(v1s[::10,:,0])
-plt.vlines(32,0 , len(v1s[::10,:,0]))
+# plt.vlines(32,0 , len(v1s[::10,:,0]))
 plt.show()
 
 s = np.zeros((360, dim))
@@ -465,7 +475,10 @@ for a in range(360):
     p = start_data[1][a, :64, 0]
     s[a, :] = p
 plt.matshow(s.T, extent=[-180, 180, 0, 64])
-plt.hlines(32,-180, 180)
+plt.ylabel('Pixel')
+plt.xlabel('Orientation angle, degrees')
+plt.colorbar()
+# plt.hlines(32,-180, 180)
 plt.show()
 
 inds=[]
@@ -477,7 +490,7 @@ show_shapes(dim, cheat_data, num, inds)
 i1 = np.argmin((w1-np.deg2rad(5))**2)
 i2 = np.argmin((w1-np.deg2rad(10))**2)
 i3 = np.argmin((w1-np.deg2rad(75))**2)
-show_shapes(dim, cheat_data, num)
+show_shapes(dim, cheat_data, num, 360)
 
 stereo1d_model, cnn1d_model = STEREO_1d_model(dim, num)
 keras.utils.plot_model(stereo1d_model, show_shapes=True)
