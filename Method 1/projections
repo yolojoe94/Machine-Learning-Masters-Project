@@ -58,8 +58,8 @@ def inside_L(space, center1, size, angle, dim):
     # normal vectors to edge, to determine if coord is inside or outside edge
     ny = np.cos(angle)
     center = center1.copy()
-    center_a = [size*(3/8-1/16), -size*(7/64)]#y,x right
-    center_b = [size*(3/8), -size*(2/8+1/64)]#y,x left
+    center_a = [size*(22/64), -size*(6/64)]#y,x right
+    center_b = [size*(26/64), -size*(18/64)]#y,x left
     center2  = center + [center_b[0]*nx + center_b[1]
                * ny, center_b[0]*ny - center_b[1]*nx]
     center3  = center - [center_a[0]*nx + center_a[1]
@@ -68,18 +68,17 @@ def inside_L(space, center1, size, angle, dim):
     center -= shift
     center2 -= shift
     center3 -= shift
-    im_1 = np.where((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny) < size/4)
-                    & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx) < 3*size/32),#middle
+    im_1 = np.where((np.absolute((space[0]-center[0])*nx+(space[1]-center[1])*ny) <= size*(18/64))
+                    & (np.absolute((space[0]-center[0])*ny-(space[1]-center[1])*nx) <= size*(6/64)),#middle
                     1, 0)
-    im_2 = np.where((np.absolute((space[0]-center2[0])*nx+(space[1]-center2[1])*ny) < size/8)
-                    & (np.absolute((space[0]-center2[0])*ny-(space[1]-center2[1])*nx) < size*(3/8)),#left
+    im_2 = np.where((np.absolute((space[0]-center2[0])*nx+(space[1]-center2[1])*ny) <= size*(8/64))
+                    & (np.absolute((space[0]-center2[0])*ny-(space[1]-center2[1])*nx) <= size*(24/64)),#left
                     1, 0)
-    im_3 = np.where((np.absolute((space[0]-center3[0])*nx+(space[1]-center3[1])*ny) < size/16)
-                    & (np.absolute((space[0]-center3[0])*ny-(space[1]-center3[1])*nx) < size*7/32),#right
+    im_3 = np.where((np.absolute((space[0]-center3[0])*nx+(space[1]-center3[1])*ny) <= size*(4/64))
+                    & (np.absolute((space[0]-center3[0])*ny-(space[1]-center3[1])*nx) <= size*(12/64)),#right
                     1, 0)
     # second condition uses tangent vectors to edge to find other two edges
     # absolute allows both edges to be considered at once
-    # size/2 is the half side length
     im_l = np.add(im_1, im_2, np.random.random(
         [dim, dim])/5) + im_3  # unprocessed image
     im_l = gaussian_filter(im_l, sigma=0.1)
