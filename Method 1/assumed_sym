@@ -200,8 +200,8 @@ def scatter_validation(model1, model2, dim, num, max_angle, batch_size, epochs, 
     plt.xlabel('Actual Values of shapes')
     plt.ylabel('Angle prediction of \nShapes 1&2')
     plt.show()
-    ang1_deg = np.rad2deg(angle1_pred)/4
-    #sort preds and truths
+    # ang1_deg = np.rad2deg(angle1_pred)/4
+    # sort preds and truths
     # sorted_angs = np.array([x for _, x in sorted(zip(test[1][:,2], ang1_deg), key=lambda pair: pair[0])])
     # sorted_truths = np.array([_ for _, x in sorted(zip(test[1][:,2], ang1_deg), key=lambda pair: pair[0])])
     # #find values where discontinuous
@@ -242,7 +242,7 @@ Y_train = (Y[:,1]-Y[:,0])*sym
 n = np.random.randint(0, num)
 # define a metric for image similarity
 diff = np.std(X_st1[:, :, :, 0] - X_st1[n, :, :, 0], axis=(1,2))
-plt.plot(Y[:,0]-Y[n,0], diff, '.')
+plt.plot(Y[:,0]-Y[0,0], diff, '.')
 plt.show()
 
 h = []
