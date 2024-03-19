@@ -200,7 +200,7 @@ def STEREO_1d_model(dim, num):
     angle1 = tfm.atan2(a1[:, 0], a1[:, 1], name="angle1")
     c1 = tf.reshape(angle1, [-1, 1])
     angle2 = tfm.atan2(a2[:, 0], a2[:, 1], name="angle1")
-    c2 = tf.reshape(angle1, [-1, 1])
+    c2 = tf.reshape(angle2, [-1, 1])
     # difference in angle
     sub = tfm.subtract(a2, a1)
     # find index of lowest angle
@@ -402,191 +402,43 @@ def show_stereo_2d(dim, dataset, num, max_angle, inds=None):
     plt.yticks([])
     plt.show()
 
-dim, num, min_angle, max_angle, batch_size, epochs = 64, 16384, 0, 360, 16, 200
+dim, num, amin, amax, batch_size, epochs = 64, 4*1024, -180, 180, 64, 5
 opt = keras.optimizers.Adam(learning_rate=0.01)
-
-cnn_CHEAT = CNN_CHEAT(dim)
-stereo_CHEAT, cnn_CHEAT = STEREO_CHEAT(cnn_CHEAT, dim, num)
-cnn_CHEAT.compile(optimizer=opt, loss="mse")
-opts = np.array([0.01, 0.005, 0.005, 0.0005, 0.0005, 0.0001, 0.0001])
-epochs=np.array([100,130,131,170,190,220, 100])
-angs = [45,90,110,135,155,180, 180]
-num = 2048
-def run():
-    for j, k in enumerate(angs):
-        opt = keras.optimizers.Adam(learning_rate=opts[j])
-        cnn_CHEAT.compile(optimizer=opt, loss="mse")
-        amin = -k
-        amax = k
-        c_s, length, a_s = data_vars(dim, num, amin, amax)
-        # k=a_s[:,0].argsort()
-        # c_s = c_s[k, ...]
-        # length = length[k, ...]
-        # a_s = a_s[k, ...]
-        cheat_data = data(c_s, length, a_s, dim, num, amin, amax)
-        v1 = cheat_data[1][:, :dim, :]  # proj1
-        v2 = cheat_data[1][:, dim:, :]  # proj2
-        w1 = cheat_data[2][:, 0]  # real angles shape 1
-        y1 = np.array([np.sin(w1), np.cos(w1)]).T
-        ster = cheat_data[2][:, 1] - cheat_data[2][:, 0]  # stereoangles
-        history0 = cnn_CHEAT.fit(x=v1, y=y1, epochs=epochs[j], batch_size=batch_size)
-        plt.plot(history0.history['loss'])
-        plt.show()
-        CNN_check(cnn_CHEAT, dim, 1024, amin, amax)
-    return w1, v1, cheat_data
-
-
-
-
-epochs = [40]
-angs = [180]
-opts = [0.000001]
-w1, v1, cheat_data = run()
-cnn_CHEAT.save('-180_180 pretty good 2.keras')
-
-# num=1024
-# epochs=np.array([1])
-# angs = [180]
-# opt = keras.optimizers.Adam(learning_rate=0.0005)
-# cnn_CHEAT.compile(optimizer=opt, loss="mse")
-# w1, v1, cheat_data = run(epochs, angs)
-
-stereo_CHEAT.compile(optimizer=opt, loss="mse")
-STEREO_check(stereo_CHEAT, dim, 2048, -180, 180)
-# history1 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=5, batch_size=batch_size)
-
-k=w1.argsort()
-v1s = v1[k, ...]
-w1s = w1[k, ...]
-plt.matshow(v1s[::10,:,0])
-# plt.vlines(32,0 , len(v1s[::10,:,0]))
-plt.show()
-
-s = np.zeros((360, dim))
-c_s, length = np.zeros((360, 2)), np.ones(360)*20
-a_s = np.ones((360, 3))
-a_s[np.arange(360), np.zeros(360, int)] = np.deg2rad(np.arange(360)-180)
-a_s[np.arange(360), np.ones(360, int)] = np.deg2rad(np.arange(360)-180)
-start_data = data(c_s, length, a_s, dim, 360, 0, 360)
-
-d = np.arange(-32,32)
-for a in range(360):
-    p = start_data[1][a, :64, 0]
-    s[a, :] = p
-plt.matshow(s.T, extent=[-180, 180, 0, 64])
-plt.ylabel('Pixel')
-plt.xlabel('Orientation angle, degrees')
-plt.colorbar()
-# plt.hlines(32,-180, 180)
-plt.show()
-
-inds=[]
-ang=0
-for i in range(3):
-    inds.append(np.argmin((w1-np.deg2rad(ang+(i*(-1)**i)*45))**2))
-show_shapes(dim, cheat_data, num, inds)
-
-i1 = np.argmin((w1-np.deg2rad(5))**2)
-i2 = np.argmin((w1-np.deg2rad(10))**2)
-i3 = np.argmin((w1-np.deg2rad(75))**2)
-show_shapes(dim, cheat_data, num, 360)
+c_s, length, a_s = data_vars(dim, num, amin, amax)
+train_data = data(c_s, length, a_s, dim, num, amin, amax)
+X_st1 = train_data[1][:, :dim, :]  # proj1
+X_st2 = train_data[1][:, dim:, :]  # proj2
+Y = train_data[2]
+Y_train = train_data[2][:, 1] - train_data[2][:, 0]  # stereoangles
 
 stereo1d_model, cnn1d_model = STEREO_1d_model(dim, num)
-keras.utils.plot_model(stereo1d_model, show_shapes=True)
+losses = {"stereo_out": "mse"}
+lossWeights = {"stereo_out": 1.0}
+stereo1d_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
 
-show_stereo_2d(dim, cheat_data, num, inds)
-
-x = np.linspace(0,360,361)
-s = np.sin(np.deg2rad(4*x))
-c = np.cos(np.deg2rad(4*x))
-plt.plot(x, s)
-plt.plot(x,c)
-plt.title('sine and cosine of 4x')
-plt.xlabel('orientation in degrees')
-plt.grid()
+# pick a random image
+n = np.random.randint(0, num)
+# define a metric for image similarity
+diff = np.std(X_st1[:, :, 0] - X_st1[n, :, 0], axis=1)
+plt.plot(Y[:,0], diff, '.')
 plt.show()
 
-from skimage.transform import iradon, iradon_sart
-r = iradon(s.T, np.rad2deg(a_s[:,0]))
-plt.matshow(r)
+h = []
 
-r = iradon_sart(s[::15, :].T, np.rad2deg(a_s[::15,0]))
-plt.matshow(r)
+for sim in [1.5, 2.5, 4, 6, 100]:
+    history2 = stereo1d_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
+                                y=Y_train[diff<sim, ...], epochs=epochs, batch_size=batch_size)
+    h.append(history2.history)  
+    CNN_check(cnn1d_model, dim, 1024, -180, 180)
+    STEREO_check(stereo1d_model, dim, 1024, -180, 180)
 
-# def show_stereo_2d(dim, dataset, num, inds=None):
-#     Z_1 = dataset[0][:, :dim, :, :]  # img1
-#     Z_2 = dataset[0][:, dim:, :, :]  # img2
-#     b = dataset[1][:, 2] #angles degrees
-#     if inds is None:
-#         inds = np.random.randint(0, num, (3))
-#     fig, axs = plt.subplots(2, len(inds))
-#     fig.suptitle(f'IMG_model, max_angle={max_angle}')
-#     for k, i in enumerate(inds):
-#         axs[0, k].imshow(Z_1[i], cmap='gray')
-#         axs[1, k].imshow(Z_2[i], cmap='gray')
-#         # axs[0, k].set_yticklabels([])
-#         # axs[1, k].set_yticklabels([])
-#     plt.yticks([])
-#     plt.rcParams['figure.dpi'] = 300
-#     plt.show()
-
-
-# from assumed_sym import data
-# from assumed_sym import inside_square
-# show_stereo_2d(dim, data(64, num, 360), num, [i1,i2])
-
-# stereo_CHEAT.compile(optimizer=opt, loss="mse")
-# history1 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=10, batch_size=batch_size)
-# plt.plot(history1.history['loss'])
-# plt.show()
-# STEREO_check(stereo_CHEAT, dim, 4096, amin, amax)
-
-'''
-steps = np.arange(0, 12)
-min_angles = np.repeat(mn+10 - steps*15, 2)
-max_angles = np.repeat(mx + steps*15, 2)
-max_angles = np.append(max_angles[1:-4], [360, 360, 360])
-min_angles = np.append(min_angles[1:-3], [min_angles[-1], 0])
-epochs = np.ones(np.shape(min_angles), int)*int(50)
-epochs[0:2] = 40
-num = mask.shape[0] + np.arange(0, len(min_angles)) * \
-    round(mask.shape[0]/(mx-mn-10)*15)
-dim, batch_size = 64, 64
-opt = keras.optimizers.Adam(learning_rate=0.01)
-# culture = np.ones((len(min_angles),epochs))
-print(mask.shape)
-stereo1d_model = keras.models.load_model('mask_trained4.keras')
-
-for i in range(len(min_angles)):
-    min_angle = min_angles[i]
-    max_angle = max_angles[i]
-    c_s, length, a_s = data_vars(dim, num, min_angle, max_angle)
-    train = data(c_s, length, a_s, dim, num[i], min_angle, max_angle)
-
-    # data
-    X_1 = train[1][:, :dim, :]  # proj1
-    Y_1 = train[1][:, dim:, :]  # proj2
-    # Z_1 = train[0][:, :dim, :, :]  # img1
-    # Z_2 = train[0][:, dim:, :, :]  # img2
-    X_2 = train[2][:, 1] - train[2][:, 0]  # stereoangles
-    real_angles = train[2][:, 0]  # correct angle of first shape in radians
-    real_angles_deg = np.rad2deg(real_angles)
-    print(num[i])
-    history = stereo1d_model.fit(
-        x=[X_1, Y_1], y=X_2, epochs=epochs[i], batch_size=batch_size)
-    # while True:
-    #     if np.average(history.history['loss'][-3:]) >0.0015:
-    #         history = stereo1d_model.fit(x=[X_1, Y_1], y=X_2, epochs=5, batch_size=batch_size)
-    #         pass
-    #     else:
-    #         break
-    # culture[i] = history.history['loss']
-    # for j in range(i+1):
-    # plt.plot(culture[j], label=f'{min_angles[i]}-{max_angles[i]}')#[int(0.1*len(l)):])
-    # plt.title('loss history')
-    plt.plot(history.history['loss'])
-    # plt.legend()
+    plt.plot(history2.history["loss"])
+    plt.yscale("log")
+    plt.title('STEREO')
     plt.show()
-    CNN_check(cnn1d_model, dim, num[i], min_angle, max_angle)
-    STEREO_check(stereo1d_model, dim, num[i], min_angle, max_angle)
-'''
+
+plt.plot(np.array([he['loss'] for he in h]).flatten())
+plt.yscale("log")
+plt.title('STEREO')
+plt.show()
+
