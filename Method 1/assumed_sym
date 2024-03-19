@@ -202,20 +202,135 @@ def scatter_validation(model1, model2, dim, num, max_angle, batch_size, epochs, 
     plt.ylabel('Angle prediction of \nShapes 1&2')
     plt.show()
     
-    t = 4*test[1][:,0]
-    st = np.sin(test[1][:,0])
-    ct = np.cos(test[1][:,0])
+    plt.plot(test[1][:,2], np.rad2deg(angle1_pred)/4, '.', c='blue', label='shape 1')
+    plt.grid()
+    plt.legend()
+    plt.xlabel('Actual Values of shape')
+    plt.ylabel('Angle prediction of \nShape 1')
+    plt.show()
+
+from scipy.optimize import curve_fit as cf
+def sin_fun(x,a,b,c,d):
+    return a*np.sin(b*x + c)+d
+def cos_fun(x,e,f,g,h):
+    return e*np.cos(f*x + g)+h
+plt.rcParams['figure.dpi'] = 300
+def sine():
+    test = data(64, 1024, 360)
+    X_st1 = test[0][:, :dim, :, :]
+    p1 = cnn1_model.predict(X_st1)
+    t = test[1][:,0]
+    tx = test[1][:,2]
+    sp_opt,sp_cov=cf(sin_fun, t, p1[:, 0], p0=(100, 4, 0, 0))
+    cp_opt,cp_cov=cf(cos_fun, t, p1[:, 1], p0=(100, 4, 0, 0))
+    s_std = np.sqrt(np.diag(sp_cov))
+    c_std = np.sqrt(np.diag(cp_cov))
+    print(sp_opt)
+    print(cp_opt)
+    a,b,c,d = np.around(np.array(sp_opt),3)
+    a2,b2,c2,d2 = np.around(np.array(s_std),3)
+    e,f,g,h = np.around(np.array(cp_opt),3)
+    e2,f2,g2,h2 = np.around(np.array(c_std),3)
+    
     s4p = p1[:, 0]
     c4p = p1[:, 1]
-    '''need to normalise s4p and c4p'''
     bs = (np.max(s4p)+np.min(s4p))/2
     bc = (np.max(c4p)+np.min(c4p))/2
-    sp = np.sin(np.arcsin((s4p-bs)/np.max(s4p-bs))/4)
-    cp = np.cos(np.arccos((c4p-bc)/np.max(c4p-bc))/4)
-    y = np.abs(s4p*ct-st*c4p)
-    plt.plot(test[1][:,2], y, '.', 'blue')
-    plt.hlines(np.sin(np.deg2rad(3*4)), 0, 360)
-    plt.grid()
+    ns4p = (s4p-bs)/np.max(s4p-bs)
+    nc4p = (c4p-bc)/np.max(c4p-bc)
+    '''maybe error bars on curve fits'''
+    '''need to fix prediction values from graphs'''
+    # tp = p1[:, 0]/(p1[:, 1])
+    # plt.scatter(t[np.abs(tp)<100],tp[np.abs(tp)<100], label='tan')
+    # plt.scatter(tx, np.arctan2(p1[:, 0], p1[:, 1]), label = 'tan(4x)')
+    
+    plt.title(r'Fitting of a*sin(b*$\theta$ + c)+d to CNN predictions of sin($\theta$)')
+    plt.xlabel(r'Orientation, $\theta$ (degrees)')
+    plt.ylabel(r'Predicted sin($\theta$)')
+    plt.scatter(tx, p1[:, 0], s=5, label='predicted data from CNN')
+    plt.plot(np.sort(tx), a*np.sin(b*np.sort(t) + c)+d, 'red', label=fr'a={a}$\pm${a2}, b={b}$\pm${b2}, c={c}$\pm${c2}, d={d}$\pm${d2}')
+    bottom, top = plt.ylim()  # return the current ylim
+    plt.ylim((bottom, top*1.3))
+    plt.legend()
+    plt.show()
+    
+    plt.title(r'Fitting of e*cos(f*$\theta$ + g)+h to CNN predictions of cos($\theta$)')
+    plt.xlabel(r'Orientation, $\theta$ (degrees)')
+    plt.ylabel(r'Predicted cos($\theta$)')
+    plt.scatter(tx, p1[:, 1], s=5, label='predicted data from CNN')
+    plt.plot(np.sort(tx), e*np.cos(f*np.sort(t) + g)+h, 'red', label=fr'e={e}$\pm${e2}, f={f}$\pm${f2}, g={g}$\pm${g2}, h={h}$\pm${h2}')
+    bottom, top = plt.ylim()  # return the current ylim
+    plt.ylim((bottom, top*1.3))
+    plt.legend()
+    plt.show()
+    
+    plt.title(r'Normalised prediction of sin($\theta$) from CNN')
+    plt.xlabel(r'Orientation, $\theta$ (degrees)')
+    plt.ylabel(r'Predicted sin($\theta$)')
+    plt.scatter(tx, ns4p, s=5, label='Normalised predicted data from CNN')
+    plt.plot(np.sort(tx), np.sin(4*np.sort(t)+c), 'red', label=f'sin(4x+{c})')
+    bottom, top = plt.ylim()  # return the current ylim
+    plt.ylim((bottom, top*1.3))
+    plt.legend()
+    plt.show()
+        
+    plt.title(r'Normalised prediction of cos($\theta$) from CNN')
+    plt.xlabel(r'Orientation, $\theta$ (degrees)')
+    plt.ylabel(r'Predicted cos($\theta$)')
+    plt.scatter(tx, nc4p, s=5, label='Normalised predicted data from CNN')
+    plt.plot(np.sort(tx), np.cos(4*np.sort(t)+g), 'red', label=f'cos(4x+{g})')
+    bottom, top = plt.ylim()  # return the current ylim
+    plt.ylim((bottom, top*1.3))
+    plt.legend()
+    plt.show()
+    
+    plt.title(r'Prediction $\theta$ from CNN')
+    plt.xlabel(r'Orientation, $\theta$ (degrees)')
+    plt.ylabel(r'Predicted $\theta$ (degrees)')
+    # plt.plot(tx, np.rad2deg(np.arctan2(p1[:, 0], p1[:, 1])), '.', label = 'arctan(4x)')
+    plt.scatter(tx, 45*tx//45 + np.arctan2(p1[:, 0], p1[:, 1]), s=5, label=r'arctan($\frac{sin(4\theta)}{cos(4\theta)}$) + 45*x//45')
+    plt.plot([0,360],[0,360], 'red', label='y=x')
+    # bottom, top = plt.ylim()  # return the current ylim
+    # plt.ylim((bottom, top*1.3))
+    plt.legend()
+    plt.show()
+    
+    plt.title(r'Difference of CNN predicted $\theta$ and ground truth')
+    plt.xlabel(r'Orientation, $\theta$ (degrees)')
+    plt.ylabel(r'$\theta$ - x (degrees)')
+    plt.scatter(tx, 45*tx//45 + np.arctan2(p1[:, 0], p1[:, 1]) - tx, s=5, label=r'arctan($\frac{sin(4\theta)}{cos(4\theta)}$) + 45*x//45 - x')
+    plt.plot([0,360],[0,0], 'red', label='y=x')
+    bottom, top = plt.ylim()  # return the current ylim
+    plt.ylim((bottom, top*1.3))
+    plt.legend()
+    plt.show()
+    
+    # acs1 = 45*tx//45 + np.rad2deg((np.arccos(nc4p)-g)/4)
+    # acs2 = 45*tx//45 + np.arctan2(p1[:, 0], p1[:, 1])
+    # plt.plot(tx, acs1, '.', label='arccos(nc4p)-g)/4 + 45*x//45')
+    # plt.plot(tx, acs2, '.', label='arctan(p) + 45*x//45')
+    # plt.plot([0,360],[0,360], label='y=x')
+    # # bottom, top = plt.ylim()  # return the current ylim
+    # # plt.ylim((bottom, top*1.3))
+    # plt.legend()
+    # plt.show()
+     
+    # t4 = 4*t
+    # st = np.sin(test[1][:,0])
+    # ct = np.cos(test[1][:,0])
+    # s4p = p1[:, 0]
+    # c4p = p1[:, 1]
+    # '''need to normalise s4p and c4p'''
+    # bs = (np.max(s4p)+np.min(s4p))/2
+    # bc = (np.max(c4p)+np.min(c4p))/2
+    # ns4p = (s4p-bs)/np.max(s4p-bs)
+    # nc4p = (c4p-bc)/np.max(c4p-bc)
+    # sp = np.sin(np.arcsin((s4p-bs)/np.max(s4p-bs))/4)
+    # cp = np.cos(np.arccos((c4p-bc)/np.max(c4p-bc))/4)
+    # y = np.abs(s4p*ct-st*c4p)
+    # plt.plot(test[1][:,2], y, '.', 'blue')
+    # plt.hlines(np.sin(np.deg2rad(3*4)), 0, 360)
+    # plt.grid()
     
 
 '''programmatically find the right integer value
@@ -263,3 +378,14 @@ plt.plot(np.array([he['loss'] for he in h]).flatten())
 plt.yscale("log")
 plt.title('STEREO')
 plt.show()
+
+opt = keras.optimizers.Adam(learning_rate=0.001)
+stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
+history2 = stereo_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
+                            y=Y_train[diff<sim, ...], epochs=5, batch_size=batch_size)
+h.append(history2.history)  
+scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
+assert False
+stereo_model.save('very_nice_graphs_assumed_sym_stereo.keras')
+cnn1_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
+cnn1_model.save('very_nice_graphs_assumed_sym_cnn.keras')
