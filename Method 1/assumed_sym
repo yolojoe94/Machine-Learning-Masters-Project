@@ -173,7 +173,7 @@ def scatter_validation(model1, model2, dim, num, max_angle, batch_size, epochs, 
     x-axis: predicted angular separation
     trial is to show whether the model is expected to be trained'''
     
-    #generate test data
+    #stereo
     test = data(dim, round(num), max_angle)
     X_st1 = test[0][:, :dim, :, :]
     X_st2 = test[0][:, dim:, :, :]
@@ -186,12 +186,13 @@ def scatter_validation(model1, model2, dim, num, max_angle, batch_size, epochs, 
     plt.ylabel('Separation prediction')
     plt.show()
     
+    #cnn
     p1 = model2.predict(X_st1) #sin(4x), cos(4x)
     p2 = model2.predict(X_st2)
-    p1 = np.arctan2(p1[:, 0], p1[:, 1]) #(4x)
-    p2 = np.arctan2(p2[:, 0], p2[:, 1])
-    angle1_pred = np.reshape(p1, -1)
-    angle2_pred = np.reshape(p2, -1)
+    p11 = np.arctan2(p1[:, 0], p1[:, 1]) #(4x)
+    p22 = np.arctan2(p2[:, 0], p2[:, 1])
+    angle1_pred = np.reshape(p11, -1)
+    angle2_pred = np.reshape(p22, -1)
     #divide by 4 to account for sym=4 entending the graph
     plt.scatter(test[1][:,2], np.rad2deg(angle1_pred)/4, c='blue', label='shape 1') #(x)
     plt.scatter(test[1][:,2], np.rad2deg(angle2_pred)/4, c='orange', label='shape 2')
@@ -200,21 +201,21 @@ def scatter_validation(model1, model2, dim, num, max_angle, batch_size, epochs, 
     plt.xlabel('Actual Values of shapes')
     plt.ylabel('Angle prediction of \nShapes 1&2')
     plt.show()
-    # ang1_deg = np.rad2deg(angle1_pred)/4
-    # sort preds and truths
-    # sorted_angs = np.array([x for _, x in sorted(zip(test[1][:,2], ang1_deg), key=lambda pair: pair[0])])
-    # sorted_truths = np.array([_ for _, x in sorted(zip(test[1][:,2], ang1_deg), key=lambda pair: pair[0])])
-    # #find values where discontinuous
-    # b1 = (sorted_truths[1:])[(sorted_angs[1:]-sorted_angs[:-1])<-25]
-    # b2 = (sorted_truths[1:])[(sorted_angs[1:]-sorted_angs[:-1])>25]
-    # b1 = np.append(b1, 360*2)
-    # bounds=[]
-    # for i in range(len(b1)-1):
-    #     if b1[i]<b1[i+1]-10:
-    #         bounds.append(b1[i])
-    # if len(bounds) != 4:
-    #     print('bounds has failed')
-    # bounds.append(360)
+    
+    t = 4*test[1][:,0]
+    st = np.sin(test[1][:,0])
+    ct = np.cos(test[1][:,0])
+    s4p = p1[:, 0]
+    c4p = p1[:, 1]
+    '''need to normalise s4p and c4p'''
+    bs = (np.max(s4p)+np.min(s4p))/2
+    bc = (np.max(c4p)+np.min(c4p))/2
+    sp = np.sin(np.arcsin((s4p-bs)/np.max(s4p-bs))/4)
+    cp = np.cos(np.arccos((c4p-bc)/np.max(c4p-bc))/4)
+    y = np.abs(s4p*ct-st*c4p)
+    plt.plot(test[1][:,2], y, '.', 'blue')
+    plt.hlines(np.sin(np.deg2rad(3*4)), 0, 360)
+    plt.grid()
     
 
 '''programmatically find the right integer value
