@@ -86,7 +86,7 @@ def inside_L(space, center1, size, angle, dim):
     # return np.where(im_l>0.3, 1, 0)
 
 
-def data_vars(dim, num, min_angle, max_angle):
+def data_vars(dim, num, min_angle, max_angle, ordered=False):
     '''creates dataset of num dim*(2*dim) images
     res determines number of intervals between 0 and 90 degrees
     returns arrays of shapes, the stereoimages for each shape and the angle between them'''
@@ -100,6 +100,8 @@ def data_vars(dim, num, min_angle, max_angle):
     # length[:] = dim/2
     # this 0, 90 defines the angular range of results
     a1 = (np.random.uniform(min_angle, max_angle, num))  # in degrees
+    if ordered == True:
+        a1 = np.linspace(min_angle, max_angle, num)
     a2 = a1+10
     c_s[np.arange(num), np.zeros(num, int)] = xcs
     c_s[np.arange(num), np.zeros(num, int)+1] = ycs  # centers
@@ -265,7 +267,7 @@ def create_data(dim, num, min_angle, max_angle):
         dim1, num1, min_angle1, max_angle1, start_data = d
         if (dim1, num1, min_angle1, max_angle1) == (dim, num, min_angle, max_angle):
             return start_data
-    c_s, length, a_s = data_vars(dim, num, min_angle, max_angle)
+    c_s, length, a_s = data_vars(dim, num, min_angle, max_angle, False)
     start_data = data(c_s, length, a_s, dim, num, min_angle, max_angle)
     np.save('temp.npy', (dim, num, min_angle, max_angle, start_data))
     return start_data
@@ -315,7 +317,7 @@ def CNN_check(model1, dim, num, min_angle, max_angle):
     x-axis: values of shape 1's angle
     y-axis: predicted angule'''
     # generate test data
-    c_s, length, a_s = data_vars(dim, num, -180, 180)
+    c_s, length, a_s = data_vars(dim, num, -180, 180, False)
     test = data(c_s, length, a_s, dim, num, -180, 180)
     X_1 = test[1][:, :dim, :]
     real_angles_deg = np.rad2deg(test[2][:, 0])
@@ -341,7 +343,7 @@ def STEREO_check(model1, dim, num, min_angle, max_angle):
     x-axis: values of shape 1's angle
     y-axis: predicted stereo angle'''
     # generate test data
-    c_s, length, a_s = data_vars(dim, num, -180, 180)
+    c_s, length, a_s = data_vars(dim, num, -180, 180, False)
     test = data(c_s, length, a_s, dim, num, -180, 180)
     X_1 = test[1][:, :dim, :]
     Y_1 = test[1][:, dim:, :]
@@ -402,9 +404,9 @@ def show_stereo_2d(dim, dataset, num, max_angle, inds=None):
     plt.yticks([])
     plt.show()
 
-dim, num, amin, amax, batch_size, epochs = 64, 4*1024, -180, 180, 64, 5
+dim, num, amin, amax, batch_size, epochs = 64, 360*10, -180, 180, 64, 5
 opt = keras.optimizers.Adam(learning_rate=0.01)
-c_s, length, a_s = data_vars(dim, num, amin, amax)
+c_s, length, a_s = data_vars(dim, num, amin, amax, True)
 train_data = data(c_s, length, a_s, dim, num, amin, amax)
 X_st1 = train_data[1][:, :dim, :]  # proj1
 X_st2 = train_data[1][:, dim:, :]  # proj2
@@ -419,20 +421,155 @@ stereo1d_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
 # pick a random image
 n = np.random.randint(0, num)
 # define a metric for image similarity
+X = Y[:,2]
+from scipy.signal import argrelextrema
+
+freq = 1
+min_distance = 40  # Minimum distance between two minima on the x-axis
+
+max_count_idx = -1  # Index corresponding to the maximum count_between value
+max_count = -1  # Maximum count_between value
+max_diff_idx = -1 # max difference
+max_diff = -1 # max difference
+max_diffs = []
+min1_min2 = []
+min3_min4 = []
+
+for i in range(int(360/freq)):
+    diff = np.std(X_st1[:, :, 0] - X_st1[int(num/360*freq*i), :, 0], axis=1)
+    
+    # Find local minima indices
+    minima_indices = argrelextrema(diff, np.less, order=60)[0]
+    
+    # Ensure at least two local minima are found
+    if len(minima_indices) >= 3:
+        # Sort the indices based on the difference values
+        sorted_minima_indices = sorted(minima_indices, key=lambda x: diff[x])
+        # this tells me how many minima are found
+        print(len(sorted_minima_indices))
+
+        # Get the indices of the two most prominent local minima
+        min1_idx = sorted_minima_indices[0]
+        min2_idx = sorted_minima_indices[1]
+
+        # Calculate the distance considering the periodicity of the x-axis
+        dist1 = min(abs(X[min1_idx] - X[min2_idx]), abs(360 - abs(X[min1_idx] - X[min2_idx])))
+        
+        idx = 2
+        # Check if the two minima are far enough apart
+        if dist1 < min_distance:
+            # If they are too close, choose the next two minima that meet the criteria
+            for idx in range(2, len(sorted_minima_indices)):
+                dist2 = min(abs(X[min1_idx] - X[sorted_minima_indices[idx]]), abs(360 - abs(X[min1_idx] - X[sorted_minima_indices[idx]])))
+                if dist2 >= min_distance:
+                    min2_idx = sorted_minima_indices[idx]
+                    break
+        
+        min3_idx = sorted_minima_indices[2]
+        
+        # Calculate the distance considering the periodicity of the x-axis
+        dist13 = min(abs(X[min1_idx] - X[min3_idx]), abs(360 - abs(X[min1_idx] - X[min3_idx])))
+        dist23 = min(abs(X[min2_idx] - X[min3_idx]), abs(360 - abs(X[min2_idx] - X[min3_idx])))
+        
+        if dist13 < min_distance or dist23 < min_distance:
+            # If they are too close, choose the next two minima that meet the criteria
+            for idx4 in range(idx, len(sorted_minima_indices)):
+                dist132 = min(abs(X[min1_idx] - X[sorted_minima_indices[idx4]]), abs(360 - abs(X[min1_idx] - X[sorted_minima_indices[idx4]])),
+                              abs(X[min2_idx] - X[sorted_minima_indices[idx4]]), abs(360 - abs(X[min2_idx] - X[sorted_minima_indices[idx4]])))
+                if dist132 >= min_distance:
+                    min3_idx = sorted_minima_indices[idx4]
+                    break
+        
+        # Count the number of values between the two minima on the y-axis
+        count_between = np.sum((diff > min(diff[min1_idx], diff[min2_idx])) & (diff < max(diff[min1_idx], diff[min2_idx])))
+
+        
+
+        # Keep track of the maximum count_between value and its corresponding index
+        if count_between > max_count:
+            max_count = count_between
+            max_count_idx = i
+        
+        mins = [min1_idx, min2_idx, min3_idx]
+        min_diffs= [diff[min1_idx], diff[min2_idx], diff[min3_idx]]
+        min_xs= [X[min1_idx], X[min2_idx], X[min3_idx]]
+        sorted_diffs = [x for x, y in sorted(zip(min_diffs, min_xs))]
+        sorted_xs = [y for x, y in sorted(zip(min_diffs, min_xs))]
+        sorted_mins = [y for x, y in sorted(zip(min_diffs, mins))]
+        '''here'''
+        if sorted_xs[0] > sorted_xs[1]:
+            diff2 = diff[X<sorted_xs[0]]
+            X2 = X[X<sorted_xs[0]]
+            plt.scatter(X2, diff2)
+            diff3 = diff2[X2>sorted_xs[1]]
+            X3 = X2[X2>sorted_xs[1]]
+            plt.scatter(X3, diff3)
+            if np.max(diff3) < sorted_diffs[2]:
+                use = 'yes'
+            else:
+                use='no'
+        elif sorted_xs[0] < sorted_xs[1]:
+            diff2 = diff[X<sorted_xs[1]]
+            X2 = X[X<sorted_xs[1]]
+            plt.scatter(X2, diff2)
+            diff3 = diff2[X2>sorted_xs[0]]
+            X3 = X2[X2>sorted_xs[0]]
+            plt.scatter(X3, diff3)
+            if np.max(diff3) < sorted_diffs[2]:
+                use = 'yes'
+            else:
+                use='no'
+        
+        # Plotting
+        plt.plot(X, diff, '.', label=f'min={X[min1_idx]:.1f}, {X[min2_idx]:.1f}, {X[min3_idx]:.1f}, count={count_between}, count%={count_between/(5*360)*100:.1f}, useful = {use}')
+        plt.vlines([X[min1_idx]], ymin=min(diff), ymax=max(diff), colors='red', linestyles='--')
+        plt.vlines([X[min2_idx]], ymin=min(diff), ymax=max(diff), colors='orange', linestyles='--')
+        plt.vlines([X[min3_idx]], ymin=min(diff), ymax=max(diff), colors='yellow', linestyles='--')
+        plt.ylabel(f'sim, i = {int(freq*i)}')
+        plt.xlabel(f'max diff = {np.max(diff):.1f}')
+        plt.legend()
+        plt.show()
+        if use == 'yes':
+            print(f'graph = {int(freq*i)}, min={X[min1_idx]:.1f}, {X[min2_idx]:.1f}, {X[min3_idx]:.1f}, count={count_between}, useful = {use}')
+        if np.max(diff) > max_diff:
+            max_diff = np.max(diff)
+            max_diff_idx = i
+        max_diffs.append(np.max(diff))
+        min1_min2.append(np.abs(sorted_xs[0]-sorted_xs[1]))
+        min3_min4.append(np.abs(sorted_diffs[0]-sorted_diffs[1]))
+    else:
+        print("Less than two local minima found.")
+    
+plt.scatter(max_diffs, min1_min2)
+plt.scatter(max_diffs, min3_min4, color='red')
+    
+        
+print(f'greatest diff = {max_diff}, choice = {freq*max_diff_idx}')
+# Display the value of 5*freq*i corresponding to the maximum count_between
+print(f"Index with maximum count_between: {max_count_idx}, Corresponding value: {5*freq*max_count_idx:.1f}, Maximum count: {max_count}, max count%: {count_between/(5*360)*100}")
+
+
+# define a metric for image similarity
+n = int(num/360*freq*max_diff_idx)
 diff = np.std(X_st1[:, :, 0] - X_st1[n, :, 0], axis=1)
-plt.plot(Y[:,0], diff, '.')
+plt.ylabel('sim')
+plt.plot(Y[:,0]-Y[n,0], diff, '.')
 plt.show()
+
+for sim in [0.25, 0.3, 0.33, 100]:
+    print(X_st1[diff<sim*np.max(diff), ...].shape[0]/num*100)
+
 
 h = []
 
-for sim in [1.5, 2.5, 4, 6, 100]:
-    history2 = stereo1d_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
-                                y=Y_train[diff<sim, ...], epochs=epochs, batch_size=batch_size)
-    h.append(history2.history)  
+for sim in [0.25, 0.3, 0.33, 0.6, 1]:
+    history1 = stereo1d_model.fit(x=[X_st1[diff<sim*np.max(diff), ...], X_st2[diff<sim*np.max(diff), ...]],
+                                y=Y_train[diff<sim*np.max(diff), ...], epochs=epochs, batch_size=batch_size)
+    h.append(history1.history)  
     CNN_check(cnn1d_model, dim, 1024, -180, 180)
     STEREO_check(stereo1d_model, dim, 1024, -180, 180)
 
-    plt.plot(history2.history["loss"])
+    plt.plot(history1.history["loss"])
     plt.yscale("log")
     plt.title('STEREO')
     plt.show()
@@ -442,3 +579,192 @@ plt.yscale("log")
 plt.title('STEREO')
 plt.show()
 
+assert False
+
+
+cnn_CHEAT = CNN_CHEAT(dim)
+stereo_CHEAT, cnn_CHEAT = STEREO_CHEAT(cnn_CHEAT, dim, num)
+cnn_CHEAT.compile(optimizer=opt, loss="mse")
+opts = np.array([0.01, 0.005, 0.005, 0.0005, 0.0005, 0.0001, 0.0001])
+epochs=np.array([100,130,131,170,190,220, 100])
+angs = [45,90,110,135,155,180, 180]
+num = 2048
+def run():
+    for j, k in enumerate(angs):
+        opt = keras.optimizers.Adam(learning_rate=opts[j])
+        cnn_CHEAT.compile(optimizer=opt, loss="mse")
+        amin = -k
+        amax = k
+        c_s, length, a_s = data_vars(dim, num, amin, amax, False)
+        # k=a_s[:,0].argsort()
+        # c_s = c_s[k, ...]
+        # length = length[k, ...]
+        # a_s = a_s[k, ...]
+        cheat_data = data(c_s, length, a_s, dim, num, amin, amax)
+        v1 = cheat_data[1][:, :dim, :]  # proj1
+        v2 = cheat_data[1][:, dim:, :]  # proj2
+        w1 = cheat_data[2][:, 0]  # real angles shape 1
+        y1 = np.array([np.sin(w1), np.cos(w1)]).T
+        ster = cheat_data[2][:, 1] - cheat_data[2][:, 0]  # stereoangles
+        history2 = cnn_CHEAT.fit(x=v1, y=y1, epochs=epochs[j], batch_size=batch_size)
+        plt.plot(history2.history['loss'])
+        plt.show()
+        CNN_check(cnn_CHEAT, dim, 1024, amin, amax)
+    return w1, v1, cheat_data
+w1, v1, cheat_data = run()
+epochs = [160]
+angs = [180]
+opts = [0.000001]
+w1, v1, cheat_data = run()
+epochs = [160]
+angs = [180]
+opts = [0.00000001]
+w1, v1, cheat_data = run()
+# cnn_CHEAT.save('-180_180 pretty good 2.keras')
+
+# num=1024
+# epochs=np.array([1])
+# angs = [180]
+# opt = keras.optimizers.Adam(learning_rate=0.0005)
+# cnn_CHEAT.compile(optimizer=opt, loss="mse")
+# w1, v1, cheat_data = run(epochs, angs)
+
+stereo_CHEAT.compile(optimizer=opt, loss="mse")
+STEREO_check(stereo_CHEAT, dim, 2048, -180, 180)
+# history1 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=5, batch_size=batch_size)
+
+k=w1.argsort()
+v1s = v1[k, ...]
+w1s = w1[k, ...]
+plt.matshow(v1s[::10,:,0])
+# plt.vlines(32,0 , len(v1s[::10,:,0]))
+plt.show()
+
+s = np.zeros((360, dim))
+c_s, length = np.zeros((360, 2)), np.ones(360)*20
+a_s = np.ones((360, 3))
+a_s[np.arange(360), np.zeros(360, int)] = np.deg2rad(np.arange(360)-180)
+a_s[np.arange(360), np.ones(360, int)] = np.deg2rad(np.arange(360)-180)
+start_data = data(c_s, length, a_s, dim, 360, 0, 360)
+
+d = np.arange(-32,32)
+for a in range(360):
+    p = start_data[1][a, :64, 0]
+    s[a, :] = p
+plt.matshow(s.T, extent=[-180, 180, 0, 64])
+plt.ylabel('Pixel')
+plt.xlabel('Orientation angle, degrees')
+plt.colorbar()
+# plt.hlines(32,-180, 180)
+plt.show()
+
+inds=[]
+ang=0
+for i in range(3):
+    inds.append(np.argmin((w1-np.deg2rad(ang+(i*(-1)**i)*45))**2))
+show_shapes(dim, cheat_data, num, inds)
+
+i1 = np.argmin((w1-np.deg2rad(5))**2)
+i2 = np.argmin((w1-np.deg2rad(10))**2)
+i3 = np.argmin((w1-np.deg2rad(75))**2)
+show_shapes(dim, cheat_data, num, 360)
+
+
+keras.utils.plot_model(stereo1d_model, show_shapes=True)
+
+show_stereo_2d(dim, cheat_data, num, inds)
+
+x = np.linspace(0,360,361)
+s = np.sin(np.deg2rad(4*x))
+c = np.cos(np.deg2rad(4*x))
+plt.plot(x, s)
+plt.plot(x,c)
+plt.title('sine and cosine of 4x')
+plt.xlabel('orientation in degrees')
+plt.grid()
+plt.show()
+
+from skimage.transform import iradon, iradon_sart
+r = iradon(s.T, np.rad2deg(a_s[:,0]))
+plt.matshow(r)
+
+r = iradon_sart(s[::15, :].T, np.rad2deg(a_s[::15,0]))
+plt.matshow(r)
+
+# def show_stereo_2d(dim, dataset, num, inds=None):
+#     Z_1 = dataset[0][:, :dim, :, :]  # img1
+#     Z_2 = dataset[0][:, dim:, :, :]  # img2
+#     b = dataset[1][:, 2] #angles degrees
+#     if inds is None:
+#         inds = np.random.randint(0, num, (3))
+#     fig, axs = plt.subplots(2, len(inds))
+#     fig.suptitle(f'IMG_model, max_angle={max_angle}')
+#     for k, i in enumerate(inds):
+#         axs[0, k].imshow(Z_1[i], cmap='gray')
+#         axs[1, k].imshow(Z_2[i], cmap='gray')
+#         # axs[0, k].set_yticklabels([])
+#         # axs[1, k].set_yticklabels([])
+#     plt.yticks([])
+#     plt.rcParams['figure.dpi'] = 300
+#     plt.show()
+
+
+# from assumed_sym import data
+# from assumed_sym import inside_square
+# show_stereo_2d(dim, data(64, num, 360), num, [i1,i2])
+
+# stereo_CHEAT.compile(optimizer=opt, loss="mse")
+# history1 = stereo_CHEAT.fit(x=[v1, v2], y=ster, epochs=10, batch_size=batch_size)
+# plt.plot(history1.history['loss'])
+# plt.show()
+# STEREO_check(stereo_CHEAT, dim, 4096, amin, amax)
+
+'''
+steps = np.arange(0, 12)
+min_angles = np.repeat(mn+10 - steps*15, 2)
+max_angles = np.repeat(mx + steps*15, 2)
+max_angles = np.append(max_angles[1:-4], [360, 360, 360])
+min_angles = np.append(min_angles[1:-3], [min_angles[-1], 0])
+epochs = np.ones(np.shape(min_angles), int)*int(50)
+epochs[0:2] = 40
+num = mask.shape[0] + np.arange(0, len(min_angles)) * \
+    round(mask.shape[0]/(mx-mn-10)*15)
+dim, batch_size = 64, 64
+opt = keras.optimizers.Adam(learning_rate=0.01)
+# culture = np.ones((len(min_angles),epochs))
+print(mask.shape)
+stereo1d_model = keras.models.load_model('mask_trained4.keras')
+
+for i in range(len(min_angles)):
+    min_angle = min_angles[i]
+    max_angle = max_angles[i]
+    c_s, length, a_s = data_vars(dim, num, min_angle, max_angle)
+    train = data(c_s, length, a_s, dim, num[i], min_angle, max_angle)
+
+    # data
+    X_1 = train[1][:, :dim, :]  # proj1
+    Y_1 = train[1][:, dim:, :]  # proj2
+    # Z_1 = train[0][:, :dim, :, :]  # img1
+    # Z_2 = train[0][:, dim:, :, :]  # img2
+    X_2 = train[2][:, 1] - train[2][:, 0]  # stereoangles
+    real_angles = train[2][:, 0]  # correct angle of first shape in radians
+    real_angles_deg = np.rad2deg(real_angles)
+    print(num[i])
+    history = stereo1d_model.fit(
+        x=[X_1, Y_1], y=X_2, epochs=epochs[i], batch_size=batch_size)
+    # while True:
+    #     if np.average(history.history['loss'][-3:]) >0.0015:
+    #         history = stereo1d_model.fit(x=[X_1, Y_1], y=X_2, epochs=5, batch_size=batch_size)
+    #         pass
+    #     else:
+    #         break
+    # culture[i] = history.history['loss']
+    # for j in range(i+1):
+    # plt.plot(culture[j], label=f'{min_angles[i]}-{max_angles[i]}')#[int(0.1*len(l)):])
+    # plt.title('loss history')
+    plt.plot(history.history['loss'])
+    # plt.legend()
+    plt.show()
+    CNN_check(cnn1d_model, dim, num[i], min_angle, max_angle)
+    STEREO_check(stereo1d_model, dim, num[i], min_angle, max_angle)
+'''
