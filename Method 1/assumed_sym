@@ -69,7 +69,7 @@ def inside_square(space, center, size, angle, dim):
     return preprocess(grid2d(dim)[0], grid2d(dim)[1], im_sq, dim)
 
 
-def data(dim, num, max_angle):
+def data(dim, num, max_angle, stereo):
     '''creates dataset of num dim*(2*dim) images
     res determines number of intervals between 0 and 90 degrees
     returns arrays of shapes, the stereoimages for each shape and the angle between them'''
@@ -83,7 +83,7 @@ def data(dim, num, max_angle):
     # length[:] = dim/2
     #this 0, 90 defines the angular range of results
     a1 = (np.random.uniform(0, max_angle, num))#in degrees
-    a2 = a1+10
+    a2 = a1+stereo
     c_s[np.arange(num), np.zeros(num,int)] = xcs
     c_s[np.arange(num), np.zeros(num,int)+1] = ycs #centers
     
@@ -174,7 +174,7 @@ def scatter_validation(model1, model2, dim, num, max_angle, batch_size, epochs, 
     trial is to show whether the model is expected to be trained'''
     
     #stereo
-    test = data(dim, round(num), max_angle)
+    test = data(dim, round(num), max_angle, ste)
     X_st1 = test[0][:, :dim, :, :]
     X_st2 = test[0][:, dim:, :, :]
     X_test = [X_st1, X_st2]
@@ -215,8 +215,9 @@ def sin_fun(x,a,b,c,d):
 def cos_fun(x,e,f,g,h):
     return e*np.cos(f*x + g)+h
 plt.rcParams['figure.dpi'] = 300
-def sine(dim=64, model= tf.keras.models.load_model('very_nice_graphs_assumed_sym_cnn.keras')):
-    test = data(64, 1024, 360)
+def sine(dim=64, model= tf.keras.models.load_model('very_nice_graphs_assumed_sym_cnn.keras'),
+         stereo=10):
+    test = data(64, 1024, 360, stereo)
     X_st1 = test[0][:, :dim, :, :]
     p1 = model.predict(X_st1)
     t = test[1][:,0]
@@ -242,8 +243,8 @@ def sine(dim=64, model= tf.keras.models.load_model('very_nice_graphs_assumed_sym
     # tp = p1[:, 0]/(p1[:, 1])
     # plt.scatter(t[np.abs(tp)<100],tp[np.abs(tp)<100], label='tan')
     # plt.scatter(tx, np.arctan2(p1[:, 0], p1[:, 1]), label = 'tan(4x)')
-    
-    plt.title(r'Fitting of a*sin(b*$\theta_t$ + c)+d to normalised CNN predictions of S = sin($\theta_p$)')
+    title1 = fr'Fitting of a*sin(b*$\theta_t$ + c)+d to normalised\nCNN predictions of S = sin($\theta_p$), stereo angle = {stereo}'
+    plt.title(title1)
     plt.xlabel(r'Ground truth (orientation), $\theta_t$ (degrees)')
     plt.ylabel(r'Predicted $S(S^{2}+C^{2})^{-1/2}$')
     plt.scatter(tx, n2s4p, s=5, label='Normalised predicted data from CNN')
@@ -253,7 +254,8 @@ def sine(dim=64, model= tf.keras.models.load_model('very_nice_graphs_assumed_sym
     plt.legend()
     plt.show()
     
-    plt.title(r'Fitting of e*cos(f*$\theta_t$ + g)+h to normalised CNN predictions of C = cos($\theta_p$)')
+    title2 = fr'Fitting of e*cos(f*$\theta_t$ + g)+h to normalised\n CNN predictions of C = cos($\theta_p$), stereo angle = {stereo}'
+    plt.title(title2)
     plt.xlabel(r'Ground truth (orientation), $\theta_t$ (degrees)')
     plt.ylabel(r'Predicted $C(S^{2}+C^{2})^{-1/2}$')
     plt.scatter(tx, n2c4p, s=5, label='Normalised predicted data from CNN')
@@ -285,7 +287,8 @@ def sine(dim=64, model= tf.keras.models.load_model('very_nice_graphs_assumed_sym
     # plt.legend()
     # plt.show()
     
-    plt.title(r'Prediction $\theta_p$ from CNN')
+    title3 = fr'Prediction $\theta_p$ from CNN, stereo angle = {stereo}'
+    plt.title(title3)
     plt.xlabel(r'Ground truth (orientation), $\theta_t$ (degrees)')
     plt.ylabel(r'Predicted $\theta_p$ (degrees)')
     # plt.plot(tx, np.arctan2(p1[:, 0], p1[:, 1]), '.', label = 'arctan(4x)')
@@ -302,7 +305,8 @@ def sine(dim=64, model= tf.keras.models.load_model('very_nice_graphs_assumed_sym
     plt.legend()
     plt.show()
     
-    plt.title(r'Difference of CNN predicted, $\theta_p$ and ground truth, $\theta_t$')
+    title4 = fr'Difference of CNN predicted, $\theta_p$ and ground truth, $\theta_t$,\n stereo angle = {stereo}'
+    plt.title(title4)
     plt.xlabel(r'Ground truth (orientation), $\theta_t$ (degrees)')
     plt.ylabel(r'$\theta_p$ - $\theta_t$ (degrees)')
     plt.scatter(tx, np.rad2deg(np.arctan2(p1[:, 0], p1[:, 1]))/4 -tx +90*((tx+45)//90), s=5, label=r'arctan2($\frac{S}{C}$) + $(\theta_t+45)mod(90)$ - $\theta_t$')
@@ -313,7 +317,8 @@ def sine(dim=64, model= tf.keras.models.load_model('very_nice_graphs_assumed_sym
     plt.legend()
     plt.show()
     
-    plt.title(r'Difference of CNN predicted, $\theta_p$ and ground truth, $\theta_t$')
+    title5 = fr'Difference of CNN predicted, $\theta_p$ and ground truth, $\theta_t$,\n stereo angle = {stereo}'
+    plt.title(title5)
     plt.xlabel(r'Ground truth (orientation), $\theta_t$ (degrees)')
     plt.ylabel(r'$\theta_p$ - $\theta_t$ < 10 (degrees)')
     difs = np.rad2deg(np.arctan2(p1[:, 0], p1[:, 1]))/4 -tx +90*((tx+45)//90)
@@ -356,60 +361,63 @@ def sine(dim=64, model= tf.keras.models.load_model('very_nice_graphs_assumed_sym
     # plt.plot(test[1][:,2], y, '.', 'blue')
     # plt.hlines(np.sin(np.deg2rad(3*4)), 0, 360)
     # plt.grid()
-sine()
-assert False
+
 '''programmatically find the right integer value
 start 1d projections with a chiral (pro-chiral in literature) shape like "L"
 this stops the extra symmetry being a nuisance 
 then try with non-chiral shapes that have a line of symmetry but no rotational symmetries'''
+for ste in [1,2,5,10,15,20]:
+    dim, num, max_angle, batch_size, epochs = 64, 4*1024, 360, 64, 5
+    sym = 4
+    stereo_model, cnn1_model = STEREO_model(dim, num, batch_size, epochs)
+    opt = keras.optimizers.Adam(learning_rate=0.01)
+    losses = {"stereo_out": "mse"}
+    lossWeights = {"stereo_out": 1.0}
+    stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
+    
+    #construct data
+    train = data(dim, num, max_angle, ste)
+    X_g = np.ones((num, 1))
+    X_st1 = train[0][:, :dim, :, :]
+    X_st2 = train[0][:, dim:, :, :]
+    Y = train[1]
+    Y_train = (Y[:,1]-Y[:,0])*sym
 
-dim, num, max_angle, batch_size, epochs = 64, 4*1024, 360, 64, 5
-sym = 4
-stereo_model, cnn1_model = STEREO_model(dim, num, batch_size, epochs)
-opt = keras.optimizers.Adam(learning_rate=0.01)
-losses = {"stereo_out": "mse"}
-lossWeights = {"stereo_out": 1.0}
-stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
+    # pick a random image
+    n = np.random.randint(0, num)
+    # define a metric for image similarity
+    diff = np.std(X_st1[:, :, :, 0] - X_st1[n, :, :, 0], axis=(1,2))
+    # plt.plot(np.rad2deg(Y[:,0]), diff, '.')
+    # plt.title('Standard deviation of the difference between images\n and a randomly selected image, across the entire\n range of images, for 4096 images.')
+    # plt.ylabel('Standard deviation of difference')
+    # plt.xlabel(r'Ground truth (orientation), $\theta_t$ (degrees)')
+    # plt.show()
+    
+    h = []
+    
+    for sim in [0.2, 0.25, 0.3, 0.33, 100]:
+        history2 = stereo_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
+                                    y=Y_train[diff<sim, ...], epochs=epochs, batch_size=batch_size)
+        h.append(history2.history)  
+        # scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
+    
+        # plt.plot(history2.history["loss"])
+        # plt.yscale("log")
+        # plt.title('STEREO')
+        # plt.show()
 
-#construct data
-train = data(dim, num, max_angle)
-X_g = np.ones((num, 1))
-X_st1 = train[0][:, :dim, :, :]
-X_st2 = train[0][:, dim:, :, :]
-Y = train[1]
-Y_train = (Y[:,1]-Y[:,0])*sym
-
-# pick a random image
-n = np.random.randint(0, num)
-# define a metric for image similarity
-diff = np.std(X_st1[:, :, :, 0] - X_st1[n, :, :, 0], axis=(1,2))
-plt.plot(Y[:,0]-Y[0,0], diff, '.')
-plt.show()
-
-h = []
-
-for sim in [0.2, 0.25, 0.3, 0.33, 100]:
-    history2 = stereo_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
-                                y=Y_train[diff<sim, ...], epochs=epochs, batch_size=batch_size)
-    h.append(history2.history)  
-    scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
-
-    plt.plot(history2.history["loss"])
+    plt.plot(np.array([he['loss'] for he in h]).flatten())
     plt.yscale("log")
     plt.title('STEREO')
     plt.show()
-
-plt.plot(np.array([he['loss'] for he in h]).flatten())
-plt.yscale("log")
-plt.title('STEREO')
-plt.show()
-
-opt = keras.optimizers.Adam(learning_rate=0.001)
-stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
-history2 = stereo_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
-                            y=Y_train[diff<sim, ...], epochs=5, batch_size=batch_size)
-h.append(history2.history)  
-scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
+    
+    opt = keras.optimizers.Adam(learning_rate=0.001)
+    stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
+    history2 = stereo_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
+                                y=Y_train[diff<sim, ...], epochs=epochs, batch_size=batch_size)
+    h.append(history2.history)  
+    # scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
+    sine(64, cnn1_model, ste)
 assert False
 stereo_model.save('very_nice_graphs_assumed_sym_stereo.keras')
 cnn1_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
