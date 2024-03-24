@@ -366,58 +366,62 @@ def sine(dim=64, model= tf.keras.models.load_model('very_nice_graphs_assumed_sym
 start 1d projections with a chiral (pro-chiral in literature) shape like "L"
 this stops the extra symmetry being a nuisance 
 then try with non-chiral shapes that have a line of symmetry but no rotational symmetries'''
-for ste in [1,2,5,10,15,20]:
-    dim, num, max_angle, batch_size, epochs = 64, 4*1024, 360, 64, 5
-    sym = 4
-    stereo_model, cnn1_model = STEREO_model(dim, num, batch_size, epochs)
-    opt = keras.optimizers.Adam(learning_rate=0.01)
-    losses = {"stereo_out": "mse"}
-    lossWeights = {"stereo_out": 1.0}
-    stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
-    
-    #construct data
-    train = data(dim, num, max_angle, ste)
-    X_g = np.ones((num, 1))
-    X_st1 = train[0][:, :dim, :, :]
-    X_st2 = train[0][:, dim:, :, :]
-    Y = train[1]
-    Y_train = (Y[:,1]-Y[:,0])*sym
+ste = 1
+tf.keras.backend.clear_session()
+dim, num, max_angle, batch_size, epochs = 64, 4*1024, 360, 64, 5
+sym = 4
+stereo_model, cnn1_model = STEREO_model(dim, num, batch_size, epochs)
+opt = keras.optimizers.Adam(learning_rate=0.01)
+losses = {"stereo_out": "mse"}
+lossWeights = {"stereo_out": 1.0}
+stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
 
-    # pick a random image
-    n = np.random.randint(0, num)
-    # define a metric for image similarity
-    diff = np.std(X_st1[:, :, :, 0] - X_st1[n, :, :, 0], axis=(1,2))
-    # plt.plot(np.rad2deg(Y[:,0]), diff, '.')
-    # plt.title('Standard deviation of the difference between images\n and a randomly selected image, across the entire\n range of images, for 4096 images.')
-    # plt.ylabel('Standard deviation of difference')
-    # plt.xlabel(r'Ground truth (orientation), $\theta_t$ (degrees)')
-    # plt.show()
-    
-    h = []
-    
-    for sim in [0.2, 0.25, 0.3, 0.33, 100]:
-        history2 = stereo_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
-                                    y=Y_train[diff<sim, ...], epochs=epochs, batch_size=batch_size)
-        h.append(history2.history)  
-        # scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
-    
-        # plt.plot(history2.history["loss"])
-        # plt.yscale("log")
-        # plt.title('STEREO')
-        # plt.show()
+#construct data
+train = data(dim, num, max_angle, ste)
+X_g = np.ones((num, 1))
+X_st1 = train[0][:, :dim, :, :]
+X_st2 = train[0][:, dim:, :, :]
+Y = train[1]
+Y_train = (Y[:,1]-Y[:,0])*sym
 
-    plt.plot(np.array([he['loss'] for he in h]).flatten())
-    plt.yscale("log")
-    plt.title('STEREO')
-    plt.show()
-    
-    opt = keras.optimizers.Adam(learning_rate=0.001)
-    stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
+# pick a random image
+n = np.random.randint(0, num)
+# define a metric for image similarity
+diff = np.std(X_st1[:, :, :, 0] - X_st1[n, :, :, 0], axis=(1,2))
+# plt.plot(np.rad2deg(Y[:,0]), diff, '.')
+# plt.title('Standard deviation of the difference between images\n and a randomly selected image, across the entire\n range of images, for 4096 images.')
+# plt.ylabel('Standard deviation of difference')
+# plt.xlabel(r'Ground truth (orientation), $\theta_t$ (degrees)')
+# plt.show()
+
+h = []
+
+for sim in [0.2, 0.25, 0.3, 0.33]:
     history2 = stereo_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
                                 y=Y_train[diff<sim, ...], epochs=epochs, batch_size=batch_size)
     h.append(history2.history)  
     # scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
-    sine(64, cnn1_model, ste)
+
+    # plt.plot(history2.history["loss"])
+    # plt.yscale("log")
+    # plt.title('STEREO')
+    # plt.show()
+opt = keras.optimizers.Adam(learning_rate=0.01)
+stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
+history2 = stereo_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
+                            y=Y_train[diff<sim, ...], epochs=10, batch_size=batch_size)
+h.append(history2.history)  
+
+plt.plot(np.array([he['loss'] for he in h]).flatten())
+plt.yscale("log")
+plt.title('STEREO')
+plt.show()
+
+
+# scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
+sine(64, cnn1_model, ste)
+cnn1_model.save(f'cnn1_ster={ste}.keras')
+    
 assert False
 stereo_model.save('very_nice_graphs_assumed_sym_stereo.keras')
 cnn1_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
