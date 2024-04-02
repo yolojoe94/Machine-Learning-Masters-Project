@@ -384,8 +384,8 @@ h.append(history2.history)
 # scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
 difs, tx, av_dif, std_dif = sine(64, cnn1_model, ste)
 for acc in (0.5, 1, 2, 3):
-    up = difs[difs<av_dif+acc]#std_dif]
-    down = up[up>av_dif-acc]#std_dif]
+    up = difs[difs<0+acc]#std_dif]
+    down = up[up>0-acc]#std_dif]
     print(f'percentage within {acc} degrees = ',len(down)/len(difs)*100)
 cnn1_model.save(f'cnn1_ster={ste}.keras')
     
