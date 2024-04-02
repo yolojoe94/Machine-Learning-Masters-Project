@@ -366,7 +366,7 @@ def sine(dim=64, model= tf.keras.models.load_model('very_nice_graphs_assumed_sym
 start 1d projections with a chiral (pro-chiral in literature) shape like "L"
 this stops the extra symmetry being a nuisance 
 then try with non-chiral shapes that have a line of symmetry but no rotational symmetries'''
-ste = 1
+ste = 5
 tf.keras.backend.clear_session()
 dim, num, max_angle, batch_size, epochs = 64, 4*1024, 360, 64, 5
 sym = 4
@@ -400,22 +400,23 @@ for sim in [0.2, 0.25, 0.3, 0.33]:
     history2 = stereo_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
                                 y=Y_train[diff<sim, ...], epochs=epochs, batch_size=batch_size)
     h.append(history2.history)  
-    # scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
+    scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
 
-    # plt.plot(history2.history["loss"])
-    # plt.yscale("log")
-    # plt.title('STEREO')
-    # plt.show()
+    plt.plot(history2.history["loss"])
+    plt.yscale("log")
+    plt.title('STEREO')
+    plt.show()
+sim = 100
 opt = keras.optimizers.Adam(learning_rate=0.01)
 stereo_model.compile(optimizer=opt, loss=losses, loss_weights=lossWeights)
 history2 = stereo_model.fit(x=[X_st1[diff<sim, ...], X_st2[diff<sim, ...]],
                             y=Y_train[diff<sim, ...], epochs=10, batch_size=batch_size)
 h.append(history2.history)  
 
-plt.plot(np.array([he['loss'] for he in h]).flatten())
-plt.yscale("log")
-plt.title('STEREO')
-plt.show()
+# plt.plot(np.array([he['loss'] for he in h]).flatten())
+# plt.yscale("log")
+# plt.title('STEREO')
+# plt.show()
 
 
 # scatter_validation(stereo_model, cnn1_model, dim, num, max_angle, batch_size, epochs, 'false')
